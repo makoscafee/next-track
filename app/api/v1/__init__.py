@@ -5,9 +5,6 @@ API v1 Blueprint
 from flask import Blueprint
 from flask_restful import Api
 
-api_v1_bp = Blueprint("api_v1", __name__)
-api = Api(api_v1_bp)
-
 # Import and register resources
 from app.api.v1.mood import MoodAnalyzeResource, MoodRecommendResource
 from app.api.v1.recommend import RecommendResource, SimilarTracksResource
@@ -17,6 +14,9 @@ from app.api.v1.tracks import (
     TrackSearchResource,
 )
 from app.api.v1.user import UserHistoryResource, UserProfileResource
+
+api_v1_bp = Blueprint("api_v1", __name__)
+api = Api(api_v1_bp)
 
 # Recommendation endpoints
 api.add_resource(RecommendResource, "/recommend")

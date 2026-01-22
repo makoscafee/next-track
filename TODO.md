@@ -22,10 +22,33 @@ This file tracks the implementation progress for the NextTrack music recommendat
 - [x] `GET /api/v1/tracks/search` - Search tracks (dataset + Last.fm)
 - [x] `GET /api/v1/tracks/info` - Get track info from Last.fm
 - [x] `GET /api/v1/tracks/<id>/features` - Get audio features
-- [x] `POST /api/v1/mood/analyze` - Analyze text for mood (VADER)
+- [x] `POST /api/v1/mood/analyze` - Analyze text for mood (VADER + Transformers)
 - [x] `POST /api/v1/mood/recommend` - Mood-based recommendations
 - [x] `POST /api/v1/recommend/similar` - Find similar tracks
 - [x] `POST /api/v1/recommend` - Hybrid recommendations
+
+---
+
+## 🔴 Critical - COMPLETED
+
+### Model Persistence & Versioning
+- [x] Implement model save/load (joblib) - `app/ml/model_persistence.py`
+- [x] Create model versioning system - `ModelManager` class
+- [x] Set up model artifacts directory (`data/models/`)
+- [ ] Auto-save models after training
+
+### Train/Test Data Split
+- [x] Create train/test/validation split - `app/ml/data_split.py`
+- [x] Holdout set for evaluation metrics
+- [ ] Cross-validation setup for model tuning
+
+### Evaluation Framework
+- [x] Create `scripts/evaluate.py` for offline metrics
+- [x] Implement popularity baseline model - `app/ml/baselines.py`
+- [x] Implement random baseline model - `app/ml/baselines.py`
+- [x] Content-based baseline model - `app/ml/baselines.py`
+- [x] Metrics: Precision@K, Recall@K, NDCG@K, MRR, Coverage, Diversity - `app/ml/metrics.py`
+- [ ] Automated evaluation on model changes
 
 ---
 
@@ -37,6 +60,33 @@ This file tracks the implementation progress for the NextTrack music recommendat
 - [ ] Add caching layer for feature vectors
 - [ ] Optimize model performance
 - [ ] Write unit tests for recommender
+
+---
+
+## 🟡 Important - Phase 2-3
+
+### Data Quality & Preprocessing
+- [ ] Handle missing audio features (imputation or filter)
+- [ ] Outlier detection for audio features
+- [ ] Data validation pipeline (check for nulls, ranges)
+- [ ] Feature normalization consistency check
+
+### Cold Start Strategy
+- [ ] Implement popularity-based fallback for new users
+- [ ] Create genre-preference onboarding endpoint
+- [ ] Default recommendations for anonymous users
+- [ ] Content-based only mode for cold start
+
+### Search & Results Improvements
+- [ ] Add pagination (limit/offset) to search endpoints
+- [ ] Cache search results in Redis (5 min TTL)
+- [ ] Deduplication of recommendations
+- [ ] Filter explicit tracks option
+
+### Explainability
+- [ ] Add "reason" field to recommendations
+- [ ] Track which model component contributed most
+- [ ] Feature contribution scores
 
 ---
 
@@ -56,7 +106,7 @@ This file tracks the implementation progress for the NextTrack music recommendat
 - [ ] Add context detection (time of day, etc.)
 
 ### Phase 5: Hybrid Integration
-- [ ] Build hybrid combiner with configurable weights
+- [x] Build hybrid combiner with configurable weights (app/ml/hybrid.py)
 - [ ] Implement A/B testing framework
 - [ ] Add explanation generation for recommendations
 - [ ] Optimize recommendation latency (<500ms)
@@ -72,6 +122,41 @@ This file tracks the implementation progress for the NextTrack music recommendat
 
 ---
 
+## Evaluation Metrics
+
+### Offline Metrics to Implement
+- [ ] Precision@K (target: > 0.3)
+- [ ] Recall@K (target: > 0.2)
+- [ ] NDCG@K (target: > 0.4)
+- [ ] Coverage - % of catalog recommended (target: > 30%)
+- [ ] Diversity - intra-list diversity (target: > 0.5)
+
+### Technical Metrics to Monitor
+- [ ] API Response Time (target: < 500ms p95)
+- [ ] Model Inference Time (target: < 100ms)
+
+---
+
+## 🟢 Good to Have - Phase 5-6
+
+### Feedback Loop
+- [ ] Track recommendation clicks/plays
+- [ ] Implicit feedback collection (skip, replay, save)
+- [ ] Model retraining pipeline with new feedback
+
+### Configuration Management
+- [ ] Environment configs (dev/staging/prod)
+- [ ] Feature flags for A/B testing
+- [ ] Configurable model weights via API/config
+
+### Production Readiness
+- [ ] Health check includes DB/Redis connectivity
+- [ ] Graceful shutdown handling
+- [ ] Request timeout handling
+- [ ] Memory usage monitoring
+
+---
+
 ## Technical Debt / Improvements
 
 - [ ] Add proper error handling across all endpoints
@@ -82,6 +167,7 @@ This file tracks the implementation progress for the NextTrack music recommendat
 - [ ] Create Dockerfile for the Flask app
 - [ ] Set up CI/CD pipeline
 - [ ] Add integration tests
+- [ ] Implement Redis caching for recommendations
 
 ---
 
@@ -103,6 +189,12 @@ docker-compose up -d          # Start PostgreSQL + Redis
 source venv/bin/activate      # Activate virtual environment
 python run.py                 # Start Flask on port 5001
 ```
+
+### Priority Order for Next Session
+1. Model persistence (save/load)
+2. Train/test split
+3. Evaluation framework with baselines
+4. Cold start handling
 
 ---
 

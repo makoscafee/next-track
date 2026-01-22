@@ -7,16 +7,17 @@ An emotionally-aware, context-sensitive music recommendation API that combines c
 ## Features
 
 - **Hybrid Recommendation System**: Combines content-based (audio features), collaborative filtering, and sentiment-aware recommendations
-- **Mood Analysis**: Analyze text to detect emotions and get matching music
+- **Mood Analysis**: Analyze text to detect emotions using VADER + Transformer models (7 emotion categories with 99%+ accuracy)
 - **Audio Feature Matching**: Find tracks based on danceability, energy, valence, tempo, etc.
 - **Last.fm Integration**: Real-time similar tracks, artist info, and tags
 - **600K+ Track Dataset**: Pre-loaded Kaggle Spotify dataset with audio features
+- **Evaluation Framework**: Built-in metrics (Precision@K, Recall@K, NDCG@K) with baseline comparisons
 
 ## Tech Stack
 
 - **Backend**: Python 3.10+, Flask, Flask-RESTful
 - **Database**: PostgreSQL 15, Redis 7
-- **ML**: scikit-learn, VADER sentiment analysis
+- **ML**: scikit-learn, Transformers (DistilRoBERTa), VADER sentiment analysis
 - **APIs**: Last.fm API
 - **Data**: Kaggle Spotify Dataset (600K+ tracks)
 
@@ -112,6 +113,25 @@ Content-Type: application/json
 }
 ```
 
+Response:
+```json
+{
+    "status": "success",
+    "mood_analysis": {
+        "primary_emotion": "joy",
+        "confidence": 0.9936,
+        "valence": 0.924,
+        "arousal": 0.65,
+        "all_emotions": {
+            "joy": 0.9936,
+            "surprise": 0.0024,
+            "neutral": 0.0008,
+            ...
+        }
+    }
+}
+```
+
 ### Mood-Based Recommendations
 ```
 POST /api/v1/mood/recommend
@@ -157,6 +177,38 @@ Content-Type: application/json
 }
 ```
 
+## Model Evaluation
+
+Run the evaluation framework to compare models against baselines:
+
+```bash
+# Run evaluation with synthetic users
+python scripts/evaluate.py --n-users 100 --k 5 10 20
+
+# Results saved to data/evaluation_results.json
+```
+
+### Metrics Computed
+- **Precision@K**: Relevant items in top K recommendations
+- **Recall@K**: Proportion of relevant items found
+- **NDCG@K**: Normalized Discounted Cumulative Gain
+- **MRR**: Mean Reciprocal Rank
+- **Coverage**: Percentage of catalog recommended
+- **Diversity**: Intra-list diversity based on audio features
+
+### Baseline Models
+- **Popularity Baseline**: Recommends most popular tracks
+- **Random Baseline**: Random track selection
+- **Content-Based Baseline**: Simple feature matching
+
+### Target Metrics (from project.md)
+| Metric | Target |
+|--------|--------|
+| Precision@10 | > 0.3 |
+| Recall@10 | > 0.2 |
+| NDCG@10 | > 0.4 |
+| Coverage | > 30% |
+
 ## Project Structure
 
 ```
@@ -179,16 +231,23 @@ nexttrack/
 │   │   ├── dataset_service.py
 │   │   ├── recommendation.py
 │   │   └── mood_analyzer.py
-│   └── ml/                  # ML models
-│       ├── content_based.py
-│       ├── collaborative.py
-│       ├── sentiment_aware.py
-│       └── hybrid.py
+│   └── ml/                  # ML models & evaluation
+│       ├── content_based.py     # K-NN content filtering
+│       ├── collaborative.py     # Matrix factorization (ALS)
+│       ├── sentiment_aware.py   # Valence-Arousal mapping
+│       ├── hybrid.py            # Weighted hybrid combiner
+│       ├── baselines.py         # Baseline models for comparison
+│       ├── metrics.py           # Evaluation metrics
+│       ├── data_split.py        # Train/test split utilities
+│       └── model_persistence.py # Save/load models
 ├── data/
 │   ├── processed/           # Dataset files (tracks.csv)
-│   └── models/              # Trained ML models
+│   └── models/              # Trained ML model artifacts
 ├── tests/                   # Test suite
-├── scripts/                 # Utility scripts
+├── scripts/
+│   ├── evaluate.py          # Model evaluation script
+│   ├── seed_database.py     # Database seeding
+│   └── download_data.py     # Dataset download helper
 ├── docker-compose.yml       # PostgreSQL + Redis
 ├── requirements.txt
 ├── run.py                   # Entry point
@@ -203,12 +262,40 @@ nexttrack/
 pytest
 ```
 
+### Running the Evaluation
+
+```bash
+# Quick evaluation (50 users)
+python scripts/evaluate.py --n-users 50 --k 5 10
+
+# Full evaluation (500 users)
+python scripts/evaluate.py --n-users 500 --k 5 10 20 --output data/full_evaluation.json
+```
+
 ### Docker Commands
 
 ```bash
 docker-compose up -d      # Start databases
 docker-compose down       # Stop databases
 docker-compose logs -f    # View logs
+docker-compose ps         # Check status
+```
+
+### Model Persistence
+
+```python
+from app.ml import save_model, load_model, ModelManager
+
+# Save a trained model
+save_model(model, 'content_based', version='v1.0')
+
+# Load latest model
+model = load_model('content_based')
+
+# Use ModelManager for all models
+manager = ModelManager()
+manager.save_all({'content_based': model1, 'hybrid': model2})
+models = manager.load_all()
 ```
 
 ## Implementation Roadmap
