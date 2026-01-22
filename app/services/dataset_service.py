@@ -3,10 +3,14 @@ Dataset service for loading and managing Kaggle Spotify dataset
 Provides audio features that Last.fm doesn't offer
 """
 
+import logging
 import os
-import pandas as pd
+from typing import Dict, List, Optional
+
 import numpy as np
-from typing import Optional, List, Dict
+import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 class DatasetService:
@@ -62,14 +66,11 @@ class DatasetService:
             return True
 
         if not os.path.exists(self.dataset_path):
-            print(f"Dataset not found at {self.dataset_path}")
-            print(
-                "Please download the Kaggle Spotify dataset and place it in data/processed/"
-            )
+            logger.warning(f"Dataset not found at {self.dataset_path}")
             return False
 
         try:
-            print(f"Loading dataset from {self.dataset_path}...")
+            logger.info(f"Loading dataset from {self.dataset_path}...")
             self.tracks_df = pd.read_csv(self.dataset_path)
 
             # Standardize column names (handle different dataset formats)
@@ -79,10 +80,10 @@ class DatasetService:
             self._clean_data()
 
             self._loaded = True
-            print(f"Loaded {len(self.tracks_df)} tracks")
+            logger.info(f"Loaded {len(self.tracks_df)} tracks")
             return True
         except Exception as e:
-            print(f"Error loading dataset: {e}")
+            logger.error(f"Error loading dataset: {e}")
             return False
 
     def _standardize_columns(self):
@@ -106,22 +107,19 @@ class DatasetService:
         """Clean and preprocess the dataset."""
         # Remove duplicates
         if "id" in self.tracks_df.columns:
-            self.tracks_df.drop_duplicates(subset=["id"], inplace=True)
+            self.tracks_df = self.tracks_df.drop_duplicates(subset=["id"])
 
         # Handle missing values in audio features
         for feature in self.AUDIO_FEATURES:
             if feature in self.tracks_df.columns:
-                self.tracks_df[feature].fillna(
-                    self.tracks_df[feature].median(), inplace=True
-                )
+                median_val = self.tracks_df[feature].median()
+                self.tracks_df[feature] = self.tracks_df[feature].fillna(median_val)
 
         # Normalize tempo to 0-1 scale if present
         if "tempo" in self.tracks_df.columns:
             max_tempo = self.tracks_df["tempo"].max()
             if max_tempo > 1:  # Not already normalized
-                self.tracks_df["tempo_normalized"] = (
-                    self.tracks_df["tempo"] / 250.0
-                )  # Typical max ~250 BPM
+                self.tracks_df["tempo_normalized"] = self.tracks_df["tempo"] / 250.0
 
     def get_track_by_id(self, track_id: str) -> Optional[Dict]:
         """
@@ -327,6 +325,5 @@ class DatasetService:
             if feature in self.tracks_df.columns:
                 stats[f"{feature}_mean"] = float(self.tracks_df[feature].mean())
                 stats[f"{feature}_std"] = float(self.tracks_df[feature].std())
-                stats[f'{feature}_std'] = float(self.tracks_df[feature].std())
 
         return stats
