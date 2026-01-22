@@ -50,8 +50,8 @@ This file tracks the implementation progress for the NextTrack music recommendat
 - [ ] Integrate CF into recommendation pipeline
 
 ### Phase 4: Sentiment Analysis Enhancement
-- [ ] Install transformers library for better emotion detection
-- [ ] Add transformer-based emotion classifier
+- [x] Install transformers library for better emotion detection
+- [x] Add transformer-based emotion classifier (j-hartmann/emotion-english-distilroberta-base)
 - [ ] Improve Valence-Arousal mapping
 - [ ] Add context detection (time of day, etc.)
 

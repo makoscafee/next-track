@@ -29,9 +29,6 @@ vaderSentiment>=3.3.2
 transformers>=4.35.0
 torch>=2.1.0
 
-# Spotify Integration
-spotipy>=2.23.0
-
 # Validation & Serialization
 marshmallow>=3.20.0
 python-dotenv>=1.0.0
