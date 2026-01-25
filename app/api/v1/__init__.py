@@ -13,7 +13,12 @@ from app.api.v1.tracks import (
     TrackInfoResource,
     TrackSearchResource,
 )
-from app.api.v1.user import UserHistoryResource, UserProfileResource
+from app.api.v1.user import (
+    UserHistoryResource,
+    UserProfileResource,
+    UserStatsResource,
+    UserTopTracksResource,
+)
 
 api_v1_bp = Blueprint("api_v1", __name__)
 api = Api(api_v1_bp)
@@ -29,6 +34,8 @@ api.add_resource(MoodRecommendResource, "/mood/recommend")
 # User endpoints
 api.add_resource(UserProfileResource, "/user/profile")
 api.add_resource(UserHistoryResource, "/user/history")
+api.add_resource(UserStatsResource, "/user/stats")
+api.add_resource(UserTopTracksResource, "/user/top-tracks")
 
 # Track endpoints
 api.add_resource(TrackFeaturesResource, "/tracks/<string:track_id>/features")

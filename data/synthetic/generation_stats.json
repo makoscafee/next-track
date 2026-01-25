@@ -1,0 +1,25 @@
+{
+  "n_users": 1000,
+  "n_tracks": 50000,
+  "n_interactions": 48995,
+  "avg_interactions_per_user": 48.995,
+  "matrix_shape": [
+    1000,
+    50000
+  ],
+  "matrix_density": 0.0009799,
+  "interaction_types": {
+    "play": 43101,
+    "like": 5735,
+    "save": 159
+  },
+  "archetype_distribution": {
+    "chill_listener": 226,
+    "party_lover": 189,
+    "eclectic": 186,
+    "melancholic": 163,
+    "workout_enthusiast": 138,
+    "focus_worker": 98
+  },
+  "generated_at": "2026-01-25T14:07:53.493542"
+}

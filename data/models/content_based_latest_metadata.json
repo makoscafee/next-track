@@ -1,0 +1,27 @@
+{
+  "model_type": "content_based",
+  "n_neighbors": 50,
+  "n_tracks": 586672,
+  "features": [
+    "danceability",
+    "energy",
+    "valence",
+    "tempo",
+    "acousticness",
+    "instrumentalness",
+    "speechiness"
+  ],
+  "train_time_seconds": 0.22,
+  "validation": {
+    "is_fitted": true,
+    "n_tracks": 586672,
+    "tests_passed": 4,
+    "tests_failed": 0,
+    "avg_latency_ms": 20.24
+  },
+  "dataset_path": "data/processed/tracks.csv",
+  "model_name": "content_based",
+  "version": "20260125_140025",
+  "saved_at": "2026-01-25T14:00:27.799549",
+  "model_path": "data/models/content_based_20260125_140025.joblib"
+}

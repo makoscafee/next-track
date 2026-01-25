@@ -302,6 +302,210 @@ models = manager.load_all()
 
 See `TODO.md` for current progress and upcoming tasks.
 
+---
+
+## Development History
+
+### Phase 1: Foundation (Completed)
+
+**Project Setup**
+- Created Flask application factory pattern with blueprints
+- Set up PostgreSQL 15 + Redis 7 via Docker Compose
+- Configured Flask extensions: SQLAlchemy, Migrate, JWT, Flask-Caching, CORS
+
+**Database Models**
+- `User`: User accounts with preferences and listening history
+- `Track`: Track metadata and audio features
+- `Interaction`: User-track interactions (plays, likes, skips)
+
+**Data Integration**
+- Integrated Kaggle Spotify Dataset (586,672 tracks with audio features)
+- Implemented `DatasetService` for CSV loading and querying
+- Added Last.fm API integration for real-time track info and similar tracks
+
+**API Endpoints**
+- `GET /health` - Health check with service status
+- `GET /api/v1/tracks/search` - Search tracks across dataset + Last.fm
+- `GET /api/v1/tracks/info` - Get track info from Last.fm
+- `GET /api/v1/tracks/<id>/features` - Get audio features from dataset
+- `POST /api/v1/mood/analyze` - Analyze text for mood/emotion
+- `POST /api/v1/mood/recommend` - Mood-based recommendations
+- `POST /api/v1/recommend/similar` - Find similar tracks
+- `POST /api/v1/recommend` - Hybrid recommendations
+
+**Mood Analysis**
+- Integrated VADER sentiment analyzer for basic polarity detection
+- Added transformer-based emotion classifier (`j-hartmann/emotion-english-distilroberta-base`)
+- Implemented Valence-Arousal mapping from 7 emotion categories
+
+---
+
+### Phase 2: Content-Based Recommender (Completed)
+
+**K-NN Similarity Model** (`app/ml/content_based.py`)
+- Implemented `ContentBasedRecommender` using scikit-learn's `NearestNeighbors`
+- Uses cosine similarity on 7 audio features: danceability, energy, valence, tempo, acousticness, instrumentalness, speechiness
+- `StandardScaler` normalization for consistent feature scaling
+- Configurable K-NN algorithm (`auto`, `ball_tree`, `kd_tree`, `brute`)
+
+**Training Pipeline** (`scripts/train_content_model.py`)
+- Loads and preprocesses 586,672 tracks from dataset
+- Handles missing values with median imputation
+- Normalizes tempo to 0-1 scale (clips to 0-250 BPM range)
+- Filters tracks with >2 missing audio features
+- Automated validation tests (4 tests: recommend, recommend_from_track_id, score validation, latency)
+- Saves trained model with versioning to `data/models/`
+
+**Performance Optimizations**
+- Added O(1) track ID lookup with `_track_id_to_idx` dictionary (replaced O(n) `np.where`)
+- Implemented batch recommendation methods:
+  - `recommend_batch()` - Get recommendations for multiple feature sets in one call
+  - `recommend_from_track_ids_batch()` - Get recommendations for multiple track IDs in one call
+- Added `get_track_features()` to retrieve stored features for any track
+- Average inference latency: ~20ms (target was <100ms)
+
+**Caching Layer** (`app/ml/cached_recommender.py`)
+- `CachedContentRecommender` wrapper with Redis caching support
+- Caches recommendation results by feature hash (MD5, 5-minute TTL)
+- Caches recommendations by track ID (5-minute TTL)
+- Singleton pattern with `get_cached_recommender()` for app-wide access
+- `init_cached_recommender()` for automatic model loading on app startup
+
+**App Integration**
+- Model auto-loads when Flask app starts via `create_app()`
+- Health endpoint (`/health`) now returns model status:
+  ```json
+  {
+    "status": "healthy",
+    "service": "nexttrack",
+    "models": {
+      "content_based": {
+        "loaded": true,
+        "n_tracks": 586672,
+        "n_neighbors": 50,
+        "version": "20260125_140025",
+        "trained_at": "2026-01-25T14:00:25.825420"
+      }
+    }
+  }
+  ```
+
+**Unit Tests** (`tests/test_recommender.py`)
+- 22 tests for `ContentBasedRecommender`:
+  - Initialization (default and custom algorithm)
+  - Model fitting and track ID indexing
+  - Single recommendations (dict and array input)
+  - Batch recommendations (features and track IDs)
+  - Invalid track ID handling
+  - Feature retrieval
+  - Similarity score validation (range 0-1, sorted descending)
+  - Unfitted model edge cases
+
+**Model Persistence** (`app/ml/model_persistence.py`)
+- `save_model()` - Save with automatic versioning (timestamp) + metadata JSON
+- `load_model()` - Load by version or "latest"
+- `ModelManager` class for managing multiple models
+- Model artifacts stored in `data/models/` with format: `{model_name}_{version}.joblib`
+
+---
+
+### Phase 3: Collaborative Filtering (Completed)
+
+**Synthetic User Data Generation** (`scripts/generate_synthetic_users.py`)
+- Generates realistic user-track interaction patterns
+- 6 user archetypes with distinct preferences: `party_lover`, `chill_listener`, `workout_enthusiast`, `melancholic`, `eclectic`, `focus_worker`
+- Each archetype has characteristic audio feature preferences (e.g., party lovers prefer high danceability/energy)
+- User-track affinity calculation based on feature matching + popularity bias
+- Generates interaction types: `play`, `like`, `save` with realistic distributions
+- Outputs: `synthetic_users.json`, `synthetic_interactions.csv`, `interaction_matrix.npz`
+- Default: 1,000 users × 50 interactions each = ~50K interactions
+
+**ALS Matrix Factorization Model** (`app/ml/collaborative.py`)
+- `CollaborativeFilteringRecommender` using `implicit` library's ALS implementation
+- Configurable hyperparameters: `n_factors` (latent dimensions), `regularization`, `iterations`
+- User and track ID mappings with O(1) lookup via dictionaries
+- `recommend_for_user()` - Get personalized recommendations for a user
+- `get_similar_users()` - Find users with similar taste profiles
+- `filter_already_liked` option to exclude previously interacted tracks
+
+**CF Training Pipeline** (`scripts/train_collaborative_model.py`)
+- Loads synthetic interaction data (sparse matrix + ID mappings)
+- Trains ALS model with configurable hyperparameters
+- Validation tests: user recommendations, similar users, score validation, latency, coverage
+- Training time: ~4 seconds for 1K users × 50K tracks
+- Average inference latency: ~0.2ms per recommendation request
+
+**User Profile Service** (`app/services/user_service.py`)
+- `UserService` class for managing user profiles and interactions
+- `get_or_create_user()` - Create new users or retrieve existing
+- `record_interaction()` - Track user-track interactions (play, like, save, skip)
+- `get_user_history()` - Retrieve listening history with filters
+- `get_user_top_tracks()` - Get most played/liked tracks with engagement scoring
+- `get_user_stats()` - Listening statistics (total plays, unique tracks, avg rating)
+- `get_similar_users_by_taste()` - Find similar users via Jaccard similarity on liked tracks
+
+**User API Endpoints** (`app/api/v1/user.py`)
+- `GET /api/v1/user/profile?user_id=X` - Get user profile
+- `POST /api/v1/user/profile` - Create user with optional preferences
+- `PUT /api/v1/user/profile` - Update user preferences
+- `GET /api/v1/user/history?user_id=X` - Get listening history
+- `POST /api/v1/user/history` - Record new interaction
+- `GET /api/v1/user/stats?user_id=X` - Get user statistics
+- `GET /api/v1/user/top-tracks?user_id=X` - Get top tracks
+
+**Cached CF Recommender** (`app/ml/cached_recommender.py`)
+- `CachedCollaborativeRecommender` wrapper with Redis caching
+- Caches recommendations by user ID (5-minute TTL)
+- Caches similar users queries (5-minute TTL)
+- `get_cached_cf_recommender()` singleton accessor
+- `init_all_recommenders()` loads both content-based and CF models on startup
+
+**App Integration**
+- Both models auto-load when Flask app starts
+- Health endpoint shows both model statuses:
+  ```json
+  {
+    "status": "healthy",
+    "service": "nexttrack",
+    "models": {
+      "content_based": {
+        "loaded": true,
+        "n_tracks": 586672,
+        "n_neighbors": 50,
+        "version": "20260125_140025"
+      },
+      "collaborative": {
+        "loaded": true,
+        "n_users": 1000,
+        "n_tracks": 50000,
+        "n_factors": 50,
+        "version": "20260125_140945"
+      }
+    }
+  }
+  ```
+
+**Unit Tests** (`tests/test_collaborative.py`)
+- 14 tests for `CollaborativeFilteringRecommender`:
+  - Initialization with custom hyperparameters
+  - Model fitting with sparse interaction matrix
+  - User recommendations with score validation
+  - Similar users discovery
+  - Invalid user handling
+  - Already-liked item filtering
+  - Different users get different recommendations
+  - Integration tests with loaded model
+
+---
+
+### Phase 4: Sentiment Analysis Enhancement (Upcoming)
+
+- Improve Valence-Arousal mapping accuracy
+- Add context detection (time of day, etc.)
+- Enhanced emotion-to-music feature mapping
+
+---
+
 ## License
 
 This project is part of CM3070 Final Project at University of London.

@@ -1,0 +1,26 @@
+{
+  "model_type": "collaborative_filtering",
+  "algorithm": "ALS",
+  "n_factors": 50,
+  "regularization": 0.1,
+  "iterations": 50,
+  "n_users": 1000,
+  "n_tracks": 50000,
+  "n_interactions": 48995,
+  "matrix_density": 0.0009799,
+  "train_time_seconds": 3.96,
+  "validation": {
+    "is_fitted": true,
+    "n_users": 1000,
+    "n_tracks": 50000,
+    "tests_passed": 4,
+    "tests_failed": 1,
+    "avg_latency_ms": 0.21,
+    "coverage": 0.0271
+  },
+  "synthetic_data_dir": "data/synthetic",
+  "model_name": "collaborative",
+  "version": "20260125_140945",
+  "saved_at": "2026-01-25T14:09:45.844584",
+  "model_path": "data/models/collaborative_20260125_140945.joblib"
+}

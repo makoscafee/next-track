@@ -52,14 +52,16 @@ This file tracks the implementation progress for the NextTrack music recommendat
 
 ---
 
-## In Progress
+## Completed
 
-### Phase 2: Content-Based Recommender
-- [x] Implement K-NN based similarity model (app/ml/content_based.py)
-- [ ] Train content-based model on full dataset
-- [ ] Add caching layer for feature vectors
-- [ ] Optimize model performance
-- [ ] Write unit tests for recommender
+### Phase 2: Content-Based Recommender (Done)
+- [x] Implement K-NN based similarity model (`app/ml/content_based.py`)
+- [x] Train content-based model on full dataset (586K tracks) - `scripts/train_content_model.py`
+- [x] Add caching layer for recommendations (`app/ml/cached_recommender.py`)
+- [x] Optimize model performance (batch processing, O(1) track ID lookup, ~20ms latency)
+- [x] Write unit tests for recommender (22 tests passing)
+- [x] Auto-load model on app startup
+- [x] Health endpoint shows model status
 
 ---
 
@@ -90,14 +92,33 @@ This file tracks the implementation progress for the NextTrack music recommendat
 
 ---
 
-## Upcoming
+## Completed
 
-### Phase 3: Collaborative Filtering
-- [ ] Generate synthetic user interaction data
-- [ ] Implement matrix factorization (SVD/ALS)
-- [ ] Build user profile management
-- [ ] Create listening history tracking
-- [ ] Integrate CF into recommendation pipeline
+### Phase 3: Collaborative Filtering (Done)
+- [x] Generate synthetic user interaction data - `scripts/generate_synthetic_users.py`
+  - 6 user archetypes with distinct audio feature preferences
+  - 1,000 users × ~50 interactions each = 48,995 total interactions
+  - Outputs: users JSON, interactions CSV, sparse interaction matrix
+- [x] Implement ALS matrix factorization - `app/ml/collaborative.py`
+  - Using `implicit` library for efficient ALS
+  - 50 latent factors, ~0.2ms inference latency
+- [x] Create CF training script - `scripts/train_collaborative_model.py`
+  - Validation tests: recommendations, similar users, coverage
+  - Model versioning and persistence
+- [x] Build user profile service - `app/services/user_service.py`
+  - User CRUD, interaction tracking, listening history
+  - User stats and top tracks
+- [x] Add user API endpoints - `app/api/v1/user.py`
+  - Profile management, history, stats, top tracks
+- [x] Add cached CF recommender - `app/ml/cached_recommender.py`
+  - Redis caching for user recommendations
+  - `init_all_recommenders()` loads both models on startup
+- [x] Write unit tests (14 tests passing) - `tests/test_collaborative.py`
+- [x] Health endpoint shows both models' status
+
+---
+
+## Upcoming
 
 ### Phase 4: Sentiment Analysis Enhancement
 - [x] Install transformers library for better emotion detection
@@ -191,11 +212,10 @@ python run.py                 # Start Flask on port 5001
 ```
 
 ### Priority Order for Next Session
-1. Model persistence (save/load)
-2. Train/test split
-3. Evaluation framework with baselines
-4. Cold start handling
+1. Phase 4: Sentiment Analysis Enhancement
+2. Cold start handling
+3. Data quality & preprocessing improvements
 
 ---
 
-*Last updated: January 2026*
+*Last updated: January 25, 2026*
