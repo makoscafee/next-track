@@ -3,6 +3,7 @@ Tests for API endpoints
 """
 
 import pytest
+
 from app import create_app
 
 
@@ -40,11 +41,29 @@ class TestRecommendEndpoint:
         assert response.status_code == 200
 
     def test_recommend_with_seed_tracks(self, client):
-        """Test recommend with seed tracks."""
+        """Test recommend with seed tracks (proper format with dicts)."""
+        # seed_tracks expects list of dicts with 'name' and 'artist' keys
         response = client.post(
-            "/api/v1/recommend", json={"seed_tracks": ["track1", "track2"], "limit": 5}
+            "/api/v1/recommend",
+            json={
+                "seed_tracks": [
+                    {"name": "Bohemian Rhapsody", "artist": "Queen"},
+                    {"name": "Stairway to Heaven", "artist": "Led Zeppelin"},
+                ],
+                "limit": 5,
+            },
         )
         assert response.status_code == 200
+        data = response.get_json()
+        assert data["status"] == "success"
+        assert "recommendations" in data
+
+    def test_recommend_with_mood(self, client):
+        """Test recommend with mood parameter."""
+        response = client.post("/api/v1/recommend", json={"mood": "happy", "limit": 5})
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["status"] == "success"
 
 
 class TestMoodEndpoint:
@@ -57,6 +76,18 @@ class TestMoodEndpoint:
         )
         assert response.status_code == 200
 
+    def test_mood_analyze_returns_context(self, client):
+        """Test mood analyze returns context detection."""
+        response = client.post(
+            "/api/v1/mood/analyze",
+            json={"text": "Great morning workout in the sunny weather!"},
+        )
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["status"] == "success"
+        assert "mood_analysis" in data
+        assert "context" in data["mood_analysis"]
+
     def test_mood_recommend_endpoint_exists(self, client):
         """Test mood recommend endpoint is accessible."""
         response = client.post(
@@ -64,26 +95,67 @@ class TestMoodEndpoint:
         )
         assert response.status_code == 200
 
+    def test_mood_recommend_with_context(self, client):
+        """Test mood recommend with explicit context."""
+        response = client.post(
+            "/api/v1/mood/recommend",
+            json={
+                "mood": "happy",
+                "limit": 5,
+                "context": {"activity": "workout", "time_of_day": "morning"},
+            },
+        )
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["status"] == "success"
+
 
 class TestUserEndpoint:
     """Tests for user management endpoints."""
 
-    def test_user_profile_get(self, client):
-        """Test getting user profile."""
+    def test_user_profile_get_requires_user_id(self, client):
+        """Test getting user profile requires user_id parameter."""
+        # Without user_id, should return 400
         response = client.get("/api/v1/user/profile")
-        assert response.status_code == 200
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data["status"] == "error"
+        assert "user_id" in data["message"]
 
-    def test_user_history_get(self, client):
-        """Test getting user history."""
+    def test_user_profile_not_found(self, client):
+        """Test getting non-existent user profile returns 404."""
+        response = client.get("/api/v1/user/profile?user_id=nonexistent_user_123")
+        assert response.status_code == 404
+
+    def test_user_history_get_requires_user_id(self, client):
+        """Test getting user history requires user_id parameter."""
+        # Without user_id, should return 400
         response = client.get("/api/v1/user/history")
-        assert response.status_code == 200
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data["status"] == "error"
+        assert "user_id" in data["message"]
 
 
 class TestTrackEndpoint:
     """Tests for track features endpoint."""
 
-    def test_track_features_endpoint(self, client):
-        """Test getting track features."""
-        response = client.get("/api/v1/tracks/test_track_id/features")
-        response = client.get('/api/v1/tracks/test_track_id/features')
+    def test_track_features_not_found(self, client):
+        """Test getting features for non-existent track returns 404."""
+        response = client.get("/api/v1/tracks/nonexistent_track_id_12345/features")
+        assert response.status_code == 404
+        data = response.get_json()
+        assert data["status"] == "error"
+
+    def test_track_search_requires_query(self, client):
+        """Test track search requires query parameter."""
+        response = client.get("/api/v1/tracks/search")
+        assert response.status_code == 400
+
+    def test_track_search_with_query(self, client):
+        """Test track search with query parameter."""
+        response = client.get("/api/v1/tracks/search?q=queen&limit=5&source=dataset")
         assert response.status_code == 200
+        data = response.get_json()
+        assert data["status"] == "success"
+        assert "results" in data

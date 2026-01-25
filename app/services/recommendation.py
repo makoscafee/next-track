@@ -3,11 +3,11 @@ Recommendation service - orchestrates the hybrid recommendation system
 Combines Last.fm similarity data with Kaggle dataset audio features
 """
 
-from typing import List, Dict, Optional
+from typing import Dict, List, Optional
 
-from app.services.lastfm_service import LastFMService
-from app.services.dataset_service import DatasetService
 from app.ml.hybrid import HybridRecommender
+from app.services.dataset_service import DatasetService
+from app.services.lastfm_service import LastFMService
 
 
 class RecommendationService:
@@ -51,6 +51,7 @@ class RecommendationService:
         seed_tracks: Optional[List[Dict]] = None,
         mood: Optional[str] = None,
         limit: int = 10,
+        context: Optional[Dict] = None,
     ) -> List[Dict]:
         """
         Get hybrid recommendations combining Last.fm and dataset.
@@ -60,6 +61,7 @@ class RecommendationService:
             seed_tracks: List of seed tracks [{'name': str, 'artist': str}, ...]
             mood: Optional mood string (e.g., 'happy', 'sad', 'energetic')
             limit: Number of recommendations
+            context: Optional context dict with time_of_day, activity, weather
 
         Returns:
             list: Recommended tracks with scores and metadata
@@ -71,9 +73,9 @@ class RecommendationService:
             lastfm_recs = self._get_lastfm_recommendations(seed_tracks, limit * 2)
             recommendations.extend(lastfm_recs)
 
-        # Strategy 2: Use mood-based recommendations from dataset
+        # Strategy 2: Use mood-based recommendations from dataset (context-aware)
         if mood:
-            mood_recs = self._get_mood_recommendations(mood, limit)
+            mood_recs = self._get_mood_recommendations(mood, limit, context)
             recommendations.extend(mood_recs)
 
         # Strategy 3: If we have dataset features, use content-based model
@@ -114,26 +116,54 @@ class RecommendationService:
 
         return recommendations
 
-    def _get_mood_recommendations(self, mood: str, limit: int) -> List[Dict]:
-        """Get mood-based recommendations from dataset."""
-        # Map mood to valence/energy ranges
+    def _get_mood_recommendations(
+        self, mood: str, limit: int, context: Optional[Dict] = None
+    ) -> List[Dict]:
+        """Get context-aware mood-based recommendations from dataset."""
+        # Research-backed mood to valence/energy mapping (wider ranges for filtering)
         mood_mapping = {
-            "happy": {"valence": (0.6, 1.0), "energy": (0.5, 1.0)},
-            "sad": {"valence": (0.0, 0.4), "energy": (0.0, 0.5)},
-            "energetic": {"valence": (0.4, 1.0), "energy": (0.7, 1.0)},
-            "calm": {"valence": (0.3, 0.7), "energy": (0.0, 0.4)},
-            "angry": {"valence": (0.0, 0.4), "energy": (0.7, 1.0)},
-            "relaxed": {"valence": (0.5, 0.8), "energy": (0.1, 0.4)},
-            "excited": {"valence": (0.6, 1.0), "energy": (0.7, 1.0)},
-            "melancholic": {"valence": (0.2, 0.5), "energy": (0.2, 0.5)},
+            # High valence, high arousal
+            "happy": {"valence": (0.60, 1.0), "energy": (0.50, 1.0)},
+            "joy": {"valence": (0.65, 1.0), "energy": (0.55, 1.0)},
+            "excited": {"valence": (0.55, 1.0), "energy": (0.70, 1.0)},
+            "energetic": {"valence": (0.45, 1.0), "energy": (0.70, 1.0)},
+            # High valence, low arousal
+            "calm": {"valence": (0.45, 0.80), "energy": (0.0, 0.45)},
+            "relaxed": {"valence": (0.50, 0.85), "energy": (0.0, 0.40)},
+            "peaceful": {"valence": (0.42, 0.78), "energy": (0.0, 0.35)},
+            # Low valence, low arousal
+            "sad": {"valence": (0.0, 0.35), "energy": (0.0, 0.45)},
+            "melancholic": {"valence": (0.10, 0.45), "energy": (0.15, 0.50)},
+            # Low valence, high arousal
+            "angry": {"valence": (0.0, 0.35), "energy": (0.70, 1.0)},
+            "anxious": {"valence": (0.10, 0.50), "energy": (0.55, 0.90)},
+            "fear": {"valence": (0.05, 0.40), "energy": (0.65, 1.0)},
+            # Neutral/mixed
+            "neutral": {"valence": (0.30, 0.70), "energy": (0.30, 0.65)},
+            "surprise": {"valence": (0.35, 0.75), "energy": (0.60, 0.95)},
         }
 
         params = mood_mapping.get(
-            mood.lower(), {"valence": (0.3, 0.7), "energy": (0.3, 0.7)}
+            mood.lower(), {"valence": (0.30, 0.70), "energy": (0.30, 0.70)}
         )
 
+        # Apply context modifiers to the target ranges
+        valence_range = list(params["valence"])
+        energy_range = list(params["energy"])
+
+        if context:
+            # Context modifiers shift the ranges
+            context_mods = self._get_context_modifiers(context)
+            v_mod, e_mod = context_mods
+
+            # Shift ranges while keeping them within bounds
+            valence_range[0] = max(0.0, min(1.0, valence_range[0] + v_mod))
+            valence_range[1] = max(0.0, min(1.0, valence_range[1] + v_mod))
+            energy_range[0] = max(0.0, min(1.0, energy_range[0] + e_mod))
+            energy_range[1] = max(0.0, min(1.0, energy_range[1] + e_mod))
+
         tracks = self.dataset.get_tracks_by_mood(
-            params["valence"], params["energy"], limit=limit
+            tuple(valence_range), tuple(energy_range), limit=limit
         )
 
         return [
@@ -150,9 +180,54 @@ class RecommendationService:
                 "source": "mood_match",
                 "mood": mood,
                 "score": 0.7,
+                "context_applied": context is not None,
             }
             for t in tracks
         ]
+
+    def _get_context_modifiers(self, context: Dict) -> tuple:
+        """Get valence/energy modifiers based on context."""
+        time_mods = {
+            "morning": (0.05, 0.10),
+            "afternoon": (0.0, 0.0),
+            "evening": (0.0, -0.08),
+            "night": (-0.02, -0.15),
+        }
+        activity_mods = {
+            "workout": (0.08, 0.20),
+            "work": (-0.02, 0.05),
+            "relaxation": (0.05, -0.20),
+            "party": (0.10, 0.25),
+            "commute": (0.0, 0.0),
+            "focus": (0.0, 0.10),
+            "social": (0.08, 0.10),
+        }
+        weather_mods = {
+            "sunny": (0.08, 0.05),
+            "rainy": (-0.05, -0.08),
+            "cloudy": (-0.03, -0.03),
+            "cold": (-0.02, -0.05),
+            "hot": (0.02, 0.05),
+        }
+
+        v_mod, e_mod = 0.0, 0.0
+
+        if context.get("time_of_day"):
+            mods = time_mods.get(context["time_of_day"], (0, 0))
+            v_mod += mods[0]
+            e_mod += mods[1]
+
+        if context.get("activity"):
+            mods = activity_mods.get(context["activity"], (0, 0))
+            v_mod += mods[0]
+            e_mod += mods[1]
+
+        if context.get("weather"):
+            mods = weather_mods.get(context["weather"], (0, 0))
+            v_mod += mods[0]
+            e_mod += mods[1]
+
+        return (v_mod, e_mod)
 
     def _get_content_recommendations(
         self, seed_tracks: List[Dict], limit: int

@@ -116,15 +116,17 @@ This file tracks the implementation progress for the NextTrack music recommendat
 - [x] Write unit tests (14 tests passing) - `tests/test_collaborative.py`
 - [x] Health endpoint shows both models' status
 
+### Phase 4: Sentiment Analysis Enhancement (Done)
+- [x] Install transformers library for better emotion detection
+- [x] Add transformer-based emotion classifier (j-hartmann/emotion-english-distilroberta-base)
+- [x] Improve Valence-Arousal mapping (research-backed values, intensity modulation)
+- [x] Add context detection (time of day, activity, weather keywords)
+- [x] Context-aware API endpoints (`/mood/analyze`, `/mood/recommend`)
+- [x] Unit tests for context detection and VA mapping (21 tests)
+
 ---
 
 ## Upcoming
-
-### Phase 4: Sentiment Analysis Enhancement
-- [x] Install transformers library for better emotion detection
-- [x] Add transformer-based emotion classifier (j-hartmann/emotion-english-distilroberta-base)
-- [ ] Improve Valence-Arousal mapping
-- [ ] Add context detection (time of day, etc.)
 
 ### Phase 5: Hybrid Integration
 - [x] Build hybrid combiner with configurable weights (app/ml/hybrid.py)
@@ -212,7 +214,7 @@ python run.py                 # Start Flask on port 5001
 ```
 
 ### Priority Order for Next Session
-1. Phase 4: Sentiment Analysis Enhancement
+1. Phase 5: Hybrid Integration (A/B testing, explanations, diversity controls)
 2. Cold start handling
 3. Data quality & preprocessing improvements
 

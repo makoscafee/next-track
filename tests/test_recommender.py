@@ -250,13 +250,43 @@ class TestSentimentAwareRecommender:
         """Test determining emotion from features."""
         recommender = SentimentAwareRecommender()
 
-        # High valence, high energy should be happy/excited
+        # High valence, high energy should be in Q1 (happy/excited/joy)
         emotion = recommender.get_emotion_for_features(0.8, 0.8)
-        assert emotion in ["happy", "excited", "energetic"]
+        assert emotion in [
+            "happy",
+            "excited",
+            "energetic",
+            "joy",
+            "elated",
+            "enthusiastic",
+        ]
 
-        # Low valence, low energy should be sad
+        # Low valence, low energy should be in Q3 (sad/depressed/melancholic)
         emotion = recommender.get_emotion_for_features(0.2, 0.2)
-        assert emotion in ["sad", "peaceful", "relaxed"]
+        assert emotion in [
+            "sad",
+            "sadness",
+            "depressed",
+            "melancholic",
+            "bored",
+            "lonely",
+        ]
+
+        # High valence, low energy should be in Q4 (calm/relaxed/peaceful)
+        emotion = recommender.get_emotion_for_features(0.65, 0.2)
+        assert emotion in ["calm", "relaxed", "peaceful", "serene", "content"]
+
+        # Low valence, high energy should be in Q2 (angry/anxious/fear)
+        emotion = recommender.get_emotion_for_features(0.2, 0.85)
+        assert emotion in [
+            "angry",
+            "anger",
+            "anxious",
+            "fear",
+            "stressed",
+            "frustrated",
+            "tense",
+        ]
 
 
 class TestHybridRecommender:
