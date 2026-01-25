@@ -44,9 +44,8 @@ class TestingConfig(Config):
     """Testing configuration."""
 
     TESTING = True
-    SQLALCHEMY_DATABASE_URI = os.getenv(
-        "TEST_DATABASE_URL", "postgresql://localhost/nexttrack_test"
-    )
+    # Use SQLite in-memory for tests (no external DB required)
+    SQLALCHEMY_DATABASE_URI = os.getenv("TEST_DATABASE_URL", "sqlite:///:memory:")
 
 
 class ProductionConfig(Config):

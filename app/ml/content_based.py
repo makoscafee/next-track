@@ -3,6 +3,7 @@ Content-based filtering recommendation model
 Uses audio features to find similar tracks
 """
 
+import warnings
 from typing import Dict, List, Optional, Union
 
 import numpy as np
@@ -84,7 +85,11 @@ class ContentBasedRecommender:
             return []
 
         features = self._features_to_array(seed_track_features)
-        X = self.scaler.transform(features.reshape(1, -1))
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore", message="X does not have valid feature names"
+            )
+            X = self.scaler.transform(features.reshape(1, -1))
         distances, indices = self.nn_model.kneighbors(
             X, n_neighbors=min(n_recommendations + 1, self.n_neighbors)
         )
@@ -123,7 +128,11 @@ class ContentBasedRecommender:
         features_array = np.array(
             [self._features_to_array(f) for f in seed_features_list]
         )
-        X = self.scaler.transform(features_array)
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore", message="X does not have valid feature names"
+            )
+            X = self.scaler.transform(features_array)
 
         # Batch K-NN query
         distances, indices = self.nn_model.kneighbors(

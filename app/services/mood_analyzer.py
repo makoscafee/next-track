@@ -144,7 +144,7 @@ class MoodAnalyzerService:
             self.emotion_classifier = pipeline(
                 "text-classification",
                 model="j-hartmann/emotion-english-distilroberta-base",
-                return_all_scores=True,
+                top_k=None,  # Returns all scores (replaces deprecated return_all_scores)
             )
         except Exception as e:
             print(f"Emotion classifier not available: {e}")

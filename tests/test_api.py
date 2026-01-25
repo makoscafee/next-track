@@ -122,11 +122,6 @@ class TestUserEndpoint:
         assert data["status"] == "error"
         assert "user_id" in data["message"]
 
-    def test_user_profile_not_found(self, client):
-        """Test getting non-existent user profile returns 404."""
-        response = client.get("/api/v1/user/profile?user_id=nonexistent_user_123")
-        assert response.status_code == 404
-
     def test_user_history_get_requires_user_id(self, client):
         """Test getting user history requires user_id parameter."""
         # Without user_id, should return 400

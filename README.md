@@ -498,11 +498,81 @@ See `TODO.md` for current progress and upcoming tasks.
 
 ---
 
-### Phase 4: Sentiment Analysis Enhancement (Upcoming)
+### Phase 4: Sentiment Analysis Enhancement (Completed)
 
-- Improve Valence-Arousal mapping accuracy
-- Add context detection (time of day, etc.)
-- Enhanced emotion-to-music feature mapping
+**Improved Valence-Arousal Mapping** (`app/services/mood_analyzer.py`, `app/ml/sentiment_aware.py`)
+- Research-backed values based on Russell's Circumplex Model of Affect
+- Extended emotion vocabulary from 15 to 30+ emotions covering all four quadrants:
+  - Q1 (High valence, High arousal): joy, happy, excited, elated, enthusiastic
+  - Q2 (Low valence, High arousal): angry, anxious, fear, stressed, frustrated, tense
+  - Q3 (Low valence, Low arousal): sad, melancholic, depressed, lonely, bored
+  - Q4 (High valence, Low arousal): calm, relaxed, peaceful, serene, content
+- Intensity modulation: Confidence scores affect valence/arousal extremity
+  - High confidence → values closer to emotion extremes
+  - Low confidence → values closer to neutral (0.5, 0.45)
+- Transformer emotion mapping for `j-hartmann/emotion-english-distilroberta-base` model output
+
+**Context Detection System**
+- Automatic detection from text input:
+  - **Time of day**: morning, afternoon, evening, night (from keywords like "breakfast", "midnight", or from timestamp)
+  - **Activity**: workout, work, relaxation, party, commute, focus, social
+  - **Weather**: sunny, rainy, cloudy, cold, hot
+- Regex-based pattern matching for natural language detection
+- Fallback to timestamp-based time detection when keywords not present
+
+**Context-Aware Recommendations**
+- Context modifiers adjust target valence/arousal:
+  - Workout: +8% valence, +20% energy
+  - Relaxation: +5% valence, -20% energy
+  - Party: +10% valence, +25% energy
+  - Night: -2% valence, -15% energy
+  - Sunny weather: +8% valence, +5% energy
+- Multiple contexts stack additively (e.g., morning workout = extra high energy)
+- Values clamped to 0-1 range to prevent overflow
+
+**Updated API Endpoints**
+- `POST /api/v1/mood/analyze` now returns context detection:
+  ```json
+  {
+    "status": "success",
+    "mood_analysis": {
+      "primary_emotion": "joy",
+      "confidence": 0.92,
+      "valence": 0.85,
+      "arousal": 0.72,
+      "context": {
+        "time_of_day": "morning",
+        "activity": "workout",
+        "weather": "sunny",
+        "detected_from_text": {"time": true, "activity": true, "weather": true}
+      },
+      "context_adjustment": {
+        "valence_delta": 0.21,
+        "arousal_delta": 0.35
+      }
+    }
+  }
+  ```
+- `POST /api/v1/mood/recommend` accepts explicit context override:
+  ```json
+  {
+    "mood": "happy",
+    "limit": 10,
+    "context": {
+      "activity": "workout",
+      "time_of_day": "morning"
+    }
+  }
+  ```
+
+**Unit Tests** (`tests/test_mood_analyzer.py`)
+- 21 tests covering:
+  - Emotion VA map structure and quadrant positioning
+  - Target features with and without context
+  - Context detection from text and timestamps
+  - Activity, weather, and time-of-day detection
+  - Context modifier stacking and clamping
+  - Intensity modulation for high/low confidence emotions
 
 ---
 
