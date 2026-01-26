@@ -25,7 +25,12 @@ This file tracks the implementation progress for the NextTrack music recommendat
 - [x] `POST /api/v1/mood/analyze` - Analyze text for mood (VADER + Transformers)
 - [x] `POST /api/v1/mood/recommend` - Mood-based recommendations
 - [x] `POST /api/v1/recommend/similar` - Find similar tracks
-- [x] `POST /api/v1/recommend` - Hybrid recommendations
+- [x] `POST /api/v1/recommend` - Hybrid recommendations with explanations
+- [x] `GET /api/v1/experiments` - List A/B test experiments
+- [x] `GET /api/v1/experiments/<name>` - Get experiment details/results
+- [x] `GET /api/v1/experiments/<name>/variant` - Get user variant assignment
+- [x] `POST /api/v1/experiments/<name>/metrics` - Record experiment metric
+- [x] `POST /api/v1/feedback` - Record user feedback
 
 ---
 
@@ -63,37 +68,6 @@ This file tracks the implementation progress for the NextTrack music recommendat
 - [x] Auto-load model on app startup
 - [x] Health endpoint shows model status
 
----
-
-## 🟡 Important - Phase 2-3
-
-### Data Quality & Preprocessing
-- [ ] Handle missing audio features (imputation or filter)
-- [ ] Outlier detection for audio features
-- [ ] Data validation pipeline (check for nulls, ranges)
-- [ ] Feature normalization consistency check
-
-### Cold Start Strategy
-- [ ] Implement popularity-based fallback for new users
-- [ ] Create genre-preference onboarding endpoint
-- [ ] Default recommendations for anonymous users
-- [ ] Content-based only mode for cold start
-
-### Search & Results Improvements
-- [ ] Add pagination (limit/offset) to search endpoints
-- [ ] Cache search results in Redis (5 min TTL)
-- [ ] Deduplication of recommendations
-- [ ] Filter explicit tracks option
-
-### Explainability
-- [ ] Add "reason" field to recommendations
-- [ ] Track which model component contributed most
-- [ ] Feature contribution scores
-
----
-
-## Completed
-
 ### Phase 3: Collaborative Filtering (Done)
 - [x] Generate synthetic user interaction data - `scripts/generate_synthetic_users.py`
   - 6 user archetypes with distinct audio feature preferences
@@ -124,16 +98,54 @@ This file tracks the implementation progress for the NextTrack music recommendat
 - [x] Context-aware API endpoints (`/mood/analyze`, `/mood/recommend`)
 - [x] Unit tests for context detection and VA mapping (21 tests)
 
+### Phase 5: Hybrid Integration (Done)
+- [x] Build hybrid combiner with configurable weights (`app/ml/hybrid.py`)
+- [x] Implement A/B testing framework (`app/ml/ab_testing.py`)
+  - Experiment/Variant classes with configurable traffic allocation
+  - Consistent user hashing for deterministic variant assignment
+  - Metric recording and statistical analysis
+  - Pre-configured experiments: hybrid_weights, diversity_level, serendipity
+- [x] Add explanation generation (`app/ml/explainer.py`)
+  - Content-based, collaborative, mood-based, and hybrid explanations
+  - Feature contribution scoring
+  - Human-readable explanation templates
+  - Context-aware explanation factors
+- [x] Add diversity controls (MMR-based re-ranking)
+  - Maximal Marginal Relevance for diversity vs relevance balance
+  - Configurable diversity_factor (0-1)
+- [x] Add serendipity injection
+  - Surprise discovery from lower-scoring tracks
+  - Configurable serendipity_factor (0-1)
+- [x] Latency optimization with timing metrics
+- [x] A/B testing API endpoints (`app/api/v1/experiments.py`)
+- [x] User feedback recording endpoint
+- [x] Unit tests for Phase 5 (52 tests) - `tests/test_phase5.py`
+
+---
+
+## 🟡 Important - Remaining
+
+### Data Quality & Preprocessing
+- [ ] Handle missing audio features (imputation or filter)
+- [ ] Outlier detection for audio features
+- [ ] Data validation pipeline (check for nulls, ranges)
+- [ ] Feature normalization consistency check
+
+### Cold Start Strategy
+- [ ] Implement popularity-based fallback for new users
+- [ ] Create genre-preference onboarding endpoint
+- [ ] Default recommendations for anonymous users
+- [ ] Content-based only mode for cold start
+
+### Search & Results Improvements
+- [ ] Add pagination (limit/offset) to search endpoints
+- [ ] Cache search results in Redis (5 min TTL)
+- [ ] Deduplication of recommendations
+- [ ] Filter explicit tracks option
+
 ---
 
 ## Upcoming
-
-### Phase 5: Hybrid Integration
-- [x] Build hybrid combiner with configurable weights (app/ml/hybrid.py)
-- [ ] Implement A/B testing framework
-- [ ] Add explanation generation for recommendations
-- [ ] Optimize recommendation latency (<500ms)
-- [ ] Add diversity/serendipity controls
 
 ### Phase 6: Demo & Documentation
 - [ ] Build React/Vue demo frontend
@@ -147,30 +159,31 @@ This file tracks the implementation progress for the NextTrack music recommendat
 
 ## Evaluation Metrics
 
-### Offline Metrics to Implement
-- [ ] Precision@K (target: > 0.3)
-- [ ] Recall@K (target: > 0.2)
-- [ ] NDCG@K (target: > 0.4)
-- [ ] Coverage - % of catalog recommended (target: > 30%)
-- [ ] Diversity - intra-list diversity (target: > 0.5)
+### Offline Metrics Implemented
+- [x] Precision@K - `app/ml/metrics.py`
+- [x] Recall@K - `app/ml/metrics.py`
+- [x] NDCG@K - `app/ml/metrics.py`
+- [x] MRR - `app/ml/metrics.py`
+- [x] Coverage - `app/ml/metrics.py`
+- [x] Diversity - `app/ml/metrics.py`
 
-### Technical Metrics to Monitor
-- [ ] API Response Time (target: < 500ms p95)
-- [ ] Model Inference Time (target: < 100ms)
+### Technical Metrics
+- [x] API Response Time tracking (A/B test latency_ms metric)
+- [x] Model Inference Time (~20ms content-based, ~0.2ms collaborative)
 
 ---
 
-## 🟢 Good to Have - Phase 5-6
+## 🟢 Good to Have - Future
 
 ### Feedback Loop
-- [ ] Track recommendation clicks/plays
-- [ ] Implicit feedback collection (skip, replay, save)
+- [x] Track recommendation clicks/plays (via `/api/v1/feedback`)
+- [x] Implicit feedback collection (click, play, skip, save, listen_time)
 - [ ] Model retraining pipeline with new feedback
 
 ### Configuration Management
 - [ ] Environment configs (dev/staging/prod)
-- [ ] Feature flags for A/B testing
-- [ ] Configurable model weights via API/config
+- [x] Feature flags for A/B testing
+- [x] Configurable model weights via A/B tests
 
 ### Production Readiness
 - [ ] Health check includes DB/Redis connectivity
@@ -190,7 +203,7 @@ This file tracks the implementation progress for the NextTrack music recommendat
 - [ ] Create Dockerfile for the Flask app
 - [ ] Set up CI/CD pipeline
 - [ ] Add integration tests
-- [ ] Implement Redis caching for recommendations
+- [x] Implement Redis caching for recommendations
 
 ---
 
@@ -213,11 +226,17 @@ source venv/bin/activate      # Activate virtual environment
 python run.py                 # Start Flask on port 5001
 ```
 
+### Test Suite
+```bash
+pytest tests/ -v              # Run all tests (122 tests)
+pytest tests/test_phase5.py   # Run Phase 5 tests only (52 tests)
+```
+
 ### Priority Order for Next Session
-1. Phase 5: Hybrid Integration (A/B testing, explanations, diversity controls)
+1. Phase 6: Demo & Documentation
 2. Cold start handling
 3. Data quality & preprocessing improvements
 
 ---
 
-*Last updated: January 25, 2026*
+*Last updated: January 26, 2026*

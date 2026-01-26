@@ -2,12 +2,16 @@
 
 **CM3070 Final Project – University of London**
 
-An emotionally-aware, context-sensitive music recommendation API that combines content-based filtering, collaborative filtering, and sentiment analysis.
+An emotionally-aware, context-sensitive music recommendation API that combines content-based filtering, collaborative filtering, and sentiment analysis with A/B testing and explainable recommendations.
 
 ## Features
 
-- **Hybrid Recommendation System**: Combines content-based (audio features), collaborative filtering, and sentiment-aware recommendations
+- **Hybrid Recommendation System**: Combines content-based (audio features), collaborative filtering, and sentiment-aware recommendations with configurable weights
+- **A/B Testing Framework**: Built-in experiment management for comparing recommendation strategies
+- **Explainable Recommendations**: Human-readable explanations for why tracks are recommended
+- **Diversity & Serendipity Controls**: Balance between relevance and discovery
 - **Mood Analysis**: Analyze text to detect emotions using VADER + Transformer models (7 emotion categories with 99%+ accuracy)
+- **Context-Aware**: Adapts recommendations based on time of day, activity, and weather
 - **Audio Feature Matching**: Find tracks based on danceability, energy, valence, tempo, etc.
 - **Last.fm Integration**: Real-time similar tracks, artist info, and tags
 - **600K+ Track Dataset**: Pre-loaded Kaggle Spotify dataset with audio features
@@ -17,7 +21,7 @@ An emotionally-aware, context-sensitive music recommendation API that combines c
 
 - **Backend**: Python 3.10+, Flask, Flask-RESTful
 - **Database**: PostgreSQL 15, Redis 7
-- **ML**: scikit-learn, Transformers (DistilRoBERTa), VADER sentiment analysis
+- **ML**: scikit-learn, Transformers (DistilRoBERTa), VADER sentiment analysis, implicit (ALS)
 - **APIs**: Last.fm API
 - **Data**: Kaggle Spotify Dataset (600K+ tracks)
 
@@ -125,8 +129,7 @@ Response:
         "all_emotions": {
             "joy": 0.9936,
             "surprise": 0.0024,
-            "neutral": 0.0008,
-            ...
+            "neutral": 0.0008
         }
     }
 }
@@ -163,19 +166,94 @@ Content-Type: application/json
 }
 ```
 
-### Hybrid Recommendations
+### Hybrid Recommendations (with explanations)
 ```
 POST /api/v1/recommend
 Content-Type: application/json
 
 {
+    "user_id": "user_123",
     "seed_tracks": [
         {"name": "Blinding Lights", "artist": "The Weeknd"}
     ],
     "mood": "energetic",
-    "limit": 10
+    "context": {
+        "time_of_day": "morning",
+        "activity": "workout"
+    },
+    "limit": 10,
+    "include_explanation": true,
+    "diversity_factor": 0.3,
+    "serendipity_factor": 0.1
 }
 ```
+
+Response includes explanations:
+```json
+{
+    "status": "success",
+    "recommendations": [
+        {
+            "name": "Dance Monkey",
+            "artist": "Tones and I",
+            "score": 0.87,
+            "detailed_explanation": {
+                "reason": "similar_audio",
+                "summary": "Recommended for its similar sound",
+                "details": ["Similar audio characteristics to tracks you like"],
+                "model_contributions": {"content": 0.55, "sentiment": 0.45},
+                "context_factors": ["Great for starting your morning", "High energy for your workout"]
+            }
+        }
+    ],
+    "metadata": {
+        "explanations_included": true
+    }
+}
+```
+
+### A/B Testing Endpoints
+
+**List Experiments**
+```
+GET /api/v1/experiments
+```
+
+**Get Experiment Details**
+```
+GET /api/v1/experiments/hybrid_weights
+```
+
+**Get User's Variant Assignment**
+```
+GET /api/v1/experiments/hybrid_weights/variant?user_id=user_123
+```
+
+**Record Experiment Metric**
+```
+POST /api/v1/experiments/hybrid_weights/metrics
+Content-Type: application/json
+
+{
+    "user_id": "user_123",
+    "metric_name": "click_rate",
+    "value": 0.75
+}
+```
+
+**Record User Feedback**
+```
+POST /api/v1/feedback
+Content-Type: application/json
+
+{
+    "user_id": "user_123",
+    "track_id": "track_456",
+    "feedback_type": "click"
+}
+```
+
+Feedback types: `click`, `play`, `skip`, `save`, `listen_time`
 
 ## Model Evaluation
 
@@ -221,7 +299,8 @@ nexttrack/
 │   │   ├── recommend.py     # Recommendation endpoints
 │   │   ├── mood.py          # Mood analysis endpoints
 │   │   ├── tracks.py        # Track endpoints
-│   │   └── user.py          # User endpoints
+│   │   ├── user.py          # User endpoints
+│   │   └── experiments.py   # A/B testing endpoints
 │   ├── models/              # Database models
 │   │   ├── user.py
 │   │   ├── track.py
@@ -236,6 +315,8 @@ nexttrack/
 │       ├── collaborative.py     # Matrix factorization (ALS)
 │       ├── sentiment_aware.py   # Valence-Arousal mapping
 │       ├── hybrid.py            # Weighted hybrid combiner
+│       ├── ab_testing.py        # A/B testing framework
+│       ├── explainer.py         # Recommendation explanations
 │       ├── baselines.py         # Baseline models for comparison
 │       ├── metrics.py           # Evaluation metrics
 │       ├── data_split.py        # Train/test split utilities
@@ -243,7 +324,7 @@ nexttrack/
 ├── data/
 │   ├── processed/           # Dataset files (tracks.csv)
 │   └── models/              # Trained ML model artifacts
-├── tests/                   # Test suite
+├── tests/                   # Test suite (122 tests)
 ├── scripts/
 │   ├── evaluate.py          # Model evaluation script
 │   ├── seed_database.py     # Database seeding
@@ -259,7 +340,13 @@ nexttrack/
 ### Running Tests
 
 ```bash
-pytest
+# Run all tests (122 tests)
+pytest tests/ -v
+
+# Run specific test files
+pytest tests/test_phase5.py -v        # Phase 5 tests (52 tests)
+pytest tests/test_recommender.py -v   # Recommender tests
+pytest tests/test_mood_analyzer.py -v # Mood analyzer tests
 ```
 
 ### Running the Evaluation
@@ -573,6 +660,82 @@ See `TODO.md` for current progress and upcoming tasks.
   - Activity, weather, and time-of-day detection
   - Context modifier stacking and clamping
   - Intensity modulation for high/low confidence emotions
+
+---
+
+### Phase 5: Hybrid Integration (Completed)
+
+**A/B Testing Framework** (`app/ml/ab_testing.py`)
+- `Variant` class with configurable weight, config, and metric tracking
+- `Experiment` class with lifecycle management (draft → running → paused → completed)
+- `ABTestManager` for managing multiple concurrent experiments
+- Consistent user assignment via MD5 hashing (deterministic variant assignment)
+- Metric recording and statistical analysis (mean, std, min, max, count)
+- Pre-configured experiments:
+  - `hybrid_weights`: Compare different model weight configurations
+  - `diversity_level`: Low/medium/high diversity settings
+  - `serendipity`: With/without serendipity injection
+
+**Explanation Generator** (`app/ml/explainer.py`)
+- `RecommendationExplainer` for human-readable recommendation explanations
+- Explanation types: `SIMILAR_AUDIO`, `SIMILAR_USERS`, `MOOD_MATCH`, `POPULARITY`, `CONTEXT`, `SERENDIPITY`
+- `FeatureContribution` for tracking how each audio feature contributed
+- Explanation methods:
+  - `explain_content_based()` - Audio similarity explanations
+  - `explain_collaborative()` - User similarity explanations
+  - `explain_mood_based()` - Mood matching explanations with context factors
+  - `explain_hybrid()` - Combined explanations with model contribution breakdown
+- Feature-level descriptions (e.g., "high-energy", "calm and relaxed", "great for dancing")
+- Context-aware explanation factors (e.g., "Great for starting your morning", "High energy for your workout")
+
+**Diversity Controls** (MMR-based re-ranking)
+- Maximal Marginal Relevance algorithm for balancing relevance vs diversity
+- `diversity_factor` parameter (0-1): Higher values prioritize diversity over relevance
+- Feature similarity calculation for identifying redundant recommendations
+- Prevents echo chamber effect by diversifying audio characteristics
+
+**Serendipity Injection**
+- `serendipity_factor` parameter (0-1): Fraction of recommendations to replace with discoveries
+- Injects lower-scoring but potentially interesting tracks
+- Helps users discover new music outside their usual preferences
+
+**Enhanced Hybrid Recommender** (`app/ml/hybrid.py`)
+- A/B test integration for dynamic weight configuration
+- Explanation generation on demand (`include_explanation` parameter)
+- Diversity and serendipity controls with A/B test overrides
+- Latency tracking for performance monitoring
+- User feedback recording for experiment metrics
+- Track feature caching for efficient explanation generation
+
+**A/B Testing API Endpoints** (`app/api/v1/experiments.py`)
+- `GET /api/v1/experiments` - List all experiments
+- `GET /api/v1/experiments/<name>` - Get experiment details and results
+- `GET /api/v1/experiments/<name>/variant` - Get user's variant assignment
+- `POST /api/v1/experiments/<name>/metrics` - Record experiment metric
+- `POST /api/v1/feedback` - Record user feedback (click, play, skip, save, listen_time)
+
+**Updated Recommendation Endpoint** (`app/api/v1/recommend.py`)
+- New parameters:
+  - `user_id` - For A/B test assignment and personalization
+  - `include_explanation` - Request detailed explanations
+  - `diversity_factor` - Override A/B test diversity setting
+  - `serendipity_factor` - Override A/B test serendipity setting
+  - `context` - Time of day, activity, weather for context-aware recommendations
+- Response includes `detailed_explanation` when requested
+
+**Unit Tests** (`tests/test_phase5.py`)
+- 52 tests covering:
+  - Variant creation, metrics, and statistics
+  - Experiment lifecycle and user assignment
+  - ABTestManager operations
+  - Default experiment creation
+  - Explainer initialization and feature categorization
+  - Content-based, collaborative, mood-based, and hybrid explanations
+  - Explanation formatting
+  - Hybrid recommender A/B integration
+  - Feature similarity calculation
+  - API endpoint tests for experiments, variants, metrics, feedback
+  - Recommendation endpoint with diversity/serendipity/explanation parameters
 
 ---
 
