@@ -3,6 +3,8 @@ NextTrack - Music Recommendation API
 Flask application factory
 """
 
+import os
+
 from flask import Flask
 from flask_cors import CORS
 
@@ -20,7 +22,19 @@ def create_app(config_name="development"):
     migrate.init_app(app, db)
     jwt.init_app(app)
     cache.init_app(app)
-    CORS(app)
+
+    # Configure CORS
+    frontend_origins = os.getenv(
+        "FRONTEND_ORIGINS",
+        "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173",
+    )
+    CORS(
+        app,
+        origins=frontend_origins.split(","),
+        supports_credentials=True,
+        allow_headers=["Content-Type", "Authorization"],
+        methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    )
 
     # Register blueprints
     from app.api.v1 import api_v1_bp

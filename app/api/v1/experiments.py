@@ -203,6 +203,11 @@ class FeedbackResource(Resource):
             if ab_manager.get_experiment(exp_name):
                 ab_manager.record_metric(exp_name, user_id, metric_name, value)
 
+        # Record to admin feedback log
+        from app.api.v1.admin import record_feedback_log
+
+        record_feedback_log(user_id, track_id, feedback_type, value)
+
         return {
             "status": "recorded",
             "user_id": user_id,

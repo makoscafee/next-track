@@ -6,6 +6,7 @@ from flask import request
 from flask_restful import Resource
 
 from app.services import DatasetService, LastFMService
+from app.services.deezer_service import get_deezer_service
 
 # Initialize services
 dataset_service = DatasetService()
@@ -193,4 +194,92 @@ class TrackInfoResource(Resource):
             "tags": tags[:10],  # Top 10 tags
             "audio_features": audio_features,
             "in_dataset": dataset_track is not None,
+        }, 200
+
+
+class TrackPreviewResource(Resource):
+    """Get track preview URL from Deezer."""
+
+    def get(self):
+        """
+        Get 30-second preview URL for a track from Deezer.
+
+        Query params:
+            artist: Artist name
+            track: Track name
+
+        Returns:
+        {
+            "status": "success",
+            "preview": {...}
+        }
+        """
+        artist = request.args.get("artist")
+        track = request.args.get("track")
+
+        if not artist or not track:
+            return {
+                "status": "error",
+                "message": 'Both "artist" and "track" query parameters are required',
+            }, 400
+
+        deezer = get_deezer_service()
+        result = deezer.search_track_by_name_artist(track, artist)
+
+        if not result:
+            return {
+                "status": "error",
+                "message": f'Track "{track}" by "{artist}" not found on Deezer',
+            }, 404
+
+        return {
+            "status": "success",
+            "preview": {
+                "deezer_id": result.get("deezer_id"),
+                "title": result.get("title"),
+                "artist": result.get("artist"),
+                "album": result.get("album"),
+                "preview_url": result.get("preview_url"),
+                "cover_small": result.get("cover_small"),
+                "cover_medium": result.get("cover_medium"),
+                "cover_large": result.get("cover_large"),
+                "duration": result.get("duration"),
+            },
+        }, 200
+
+
+class TrackPreviewSearchResource(Resource):
+    """Search for tracks with preview URLs."""
+
+    def get(self):
+        """
+        Search for tracks on Deezer (includes preview URLs).
+
+        Query params:
+            q: Search query
+            limit: Max results (default 10, max 25)
+
+        Returns:
+        {
+            "status": "success",
+            "results": [...],
+            "count": int
+        }
+        """
+        query = request.args.get("q", "")
+        limit = min(int(request.args.get("limit", 10)), 25)
+
+        if not query:
+            return {
+                "status": "error",
+                "message": 'Query parameter "q" is required',
+            }, 400
+
+        deezer = get_deezer_service()
+        results = deezer.search_track(query, limit=limit)
+
+        return {
+            "status": "success",
+            "results": results,
+            "count": len(results),
         }, 200

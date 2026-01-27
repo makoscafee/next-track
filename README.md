@@ -82,7 +82,7 @@ python -c "from app import create_app; from app.extensions import db; app = crea
 python run.py
 ```
 
-The API will be available at `http://localhost:5001`
+The API will be available at `http://localhost:3001`
 
 ## API Endpoints
 
