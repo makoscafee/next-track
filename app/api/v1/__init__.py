@@ -21,7 +21,11 @@ from app.api.v1.experiments import (
     FeedbackResource,
 )
 from app.api.v1.mood import MoodAnalyzeResource, MoodRecommendResource
-from app.api.v1.recommend import RecommendResource, SimilarTracksResource
+from app.api.v1.recommend import (
+    OnboardingResource,
+    RecommendResource,
+    SimilarTracksResource,
+)
 from app.api.v1.tracks import (
     TrackFeaturesResource,
     TrackInfoResource,
@@ -42,6 +46,7 @@ api = Api(api_v1_bp)
 # Recommendation endpoints
 api.add_resource(RecommendResource, "/recommend")
 api.add_resource(SimilarTracksResource, "/recommend/similar")
+api.add_resource(OnboardingResource, "/onboard")
 
 # Mood endpoints
 api.add_resource(MoodAnalyzeResource, "/mood/analyze")

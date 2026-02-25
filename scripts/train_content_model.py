@@ -27,6 +27,7 @@ import pandas as pd
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.ml.content_based import ContentBasedRecommender
+from app.ml.data_quality import CONTENT_MODEL_FEATURES, DataPreprocessor
 from app.ml.model_persistence import load_model_metadata, save_model
 
 logging.basicConfig(
@@ -36,15 +37,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Audio features used by the model
-AUDIO_FEATURES = [
-    "danceability",
-    "energy",
-    "valence",
-    "tempo",
-    "acousticness",
-    "instrumentalness",
-    "speechiness",
-]
+AUDIO_FEATURES = CONTENT_MODEL_FEATURES
 
 # Default paths
 DEFAULT_DATASET_PATH = "data/processed/tracks.csv"
@@ -66,62 +59,38 @@ def load_dataset(dataset_path: str) -> pd.DataFrame:
 
 def preprocess_features(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Preprocess audio features for training.
+    Preprocess audio features for training using the data quality pipeline.
 
-    - Handles missing values
+    - Validates data quality
+    - Handles missing values (median imputation)
+    - Detects and clips outliers
     - Normalizes tempo to 0-1 scale
     - Filters out tracks with too many missing features
     - Removes duplicates
     """
     logger.info("Preprocessing features...")
 
-    # Check required columns
+    # Select relevant columns before preprocessing
     required_cols = ["id"] + AUDIO_FEATURES
     missing_cols = [col for col in required_cols if col not in df.columns]
     if missing_cols:
         raise ValueError(f"Missing required columns: {missing_cols}")
 
-    # Select relevant columns
-    df = df[required_cols + ["name", "artists"]].copy()
+    extra_cols = [c for c in ["name", "artists"] if c in df.columns]
+    df = df[required_cols + extra_cols].copy()
 
-    # Remove duplicates by ID
-    original_count = len(df)
-    df = df.drop_duplicates(subset=["id"])
-    if len(df) < original_count:
-        logger.info(f"Removed {original_count - len(df):,} duplicate tracks")
+    preprocessor = DataPreprocessor(
+        features=AUDIO_FEATURES,
+        max_missing_features=2,
+        handle_outliers=True,
+        iqr_multiplier=1.5,
+    )
+    df, quality_report = preprocessor.preprocess(df, validate=True)
 
-    # Count missing values per feature
-    for feature in AUDIO_FEATURES:
-        missing = df[feature].isna().sum()
-        if missing > 0:
-            logger.info(
-                f"  {feature}: {missing:,} missing values ({100 * missing / len(df):.2f}%)"
-            )
-
-    # Filter tracks with too many missing features (more than 2)
-    missing_count = df[AUDIO_FEATURES].isna().sum(axis=1)
-    valid_mask = missing_count <= 2
-    df = df[valid_mask]
-    logger.info(f"Kept {len(df):,} tracks with sufficient features")
-
-    # Impute missing values with median
-    for feature in AUDIO_FEATURES:
-        if df[feature].isna().any():
-            median_val = df[feature].median()
-            df[feature] = df[feature].fillna(median_val)
-            logger.info(
-                f"  Imputed {feature} missing values with median: {median_val:.3f}"
-            )
-
-    # Normalize tempo to 0-1 scale (typical range 0-250 BPM)
-    if df["tempo"].max() > 1:
-        df["tempo"] = df["tempo"].clip(0, 250) / 250.0
-        logger.info("Normalized tempo to 0-1 scale")
-
-    # Clip other features to 0-1 range (they should already be, but just in case)
-    for feature in AUDIO_FEATURES:
-        if feature != "tempo":
-            df[feature] = df[feature].clip(0, 1)
+    logger.info(
+        f"Quality report: {quality_report['input_rows']:,} -> "
+        f"{quality_report['output_rows']:,} tracks"
+    )
 
     # Rename id to track_id for the model
     df = df.rename(columns={"id": "track_id"})

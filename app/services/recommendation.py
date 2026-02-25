@@ -6,6 +6,7 @@ with A/B testing, explanations, and diversity controls.
 
 from typing import Any, Dict, List, Optional
 
+from app.ml.cold_start import ColdStartRecommender
 from app.ml.hybrid import HybridRecommender
 from app.services.dataset_service import DatasetService
 from app.services.lastfm_service import LastFMService
@@ -19,6 +20,7 @@ class RecommendationService:
         self.lastfm = LastFMService()
         self.dataset = DatasetService()
         self.hybrid_model = HybridRecommender()
+        self.cold_start = ColdStartRecommender()
         self._models_initialized = False
 
     def initialize_models(self):
@@ -40,6 +42,13 @@ class RecommendationService:
             # Fit content-based and sentiment models
             self.hybrid_model.fit_content(features_df)
             self.hybrid_model.fit_sentiment(features_df)
+
+            # Initialize cold start recommender
+            self.cold_start.initialize(
+                tracks_df=self.dataset.tracks_df,
+                content_model=self.hybrid_model.content_model,
+            )
+
             self._models_initialized = True
             print("ML models initialized successfully")
             return True
@@ -56,6 +65,7 @@ class RecommendationService:
         include_explanation: bool = False,
         diversity_factor: Optional[float] = None,
         serendipity_factor: Optional[float] = None,
+        preferred_genres: Optional[List[str]] = None,
     ) -> List[Dict]:
         """
         Get hybrid recommendations combining Last.fm and dataset.
@@ -133,7 +143,20 @@ class RecommendationService:
         # Deduplicate and rank
         recommendations = self._deduplicate_and_rank(recommendations, limit)
 
-        # Fallback to chart tracks if no recommendations
+        # Cold start strategy for new/anonymous users
+        if not recommendations and self.cold_start.is_initialized:
+            is_cold = ColdStartRecommender.is_cold_start(
+                user_id, self.hybrid_model.collab_model
+            )
+            if is_cold or (not user_id and not seed_tracks and not mood):
+                cold_recs, strategy = self.cold_start.get_cold_start_recommendations(
+                    user_id=user_id,
+                    preferred_genres=preferred_genres,
+                    n=limit,
+                )
+                recommendations = self._enrich_cold_start_recs(cold_recs, strategy)
+
+        # Fallback to chart tracks if still no recommendations
         if not recommendations:
             recommendations = self._get_fallback_recommendations(limit)
 
@@ -388,6 +411,28 @@ class RecommendationService:
         unique.sort(key=lambda x: x.get("score", 0), reverse=True)
 
         return unique[:limit]
+
+    def _enrich_cold_start_recs(
+        self, cold_recs: List[Dict], strategy: str
+    ) -> List[Dict]:
+        """Enrich cold start recommendations with track metadata."""
+        enriched = []
+        for rec in cold_recs:
+            track = self.dataset.get_track_by_id(rec["track_id"])
+            if track:
+                enriched.append(
+                    {
+                        "name": track.get("name"),
+                        "artist": track.get("artists"),
+                        "track_id": rec["track_id"],
+                        "score": rec["score"],
+                        "source": rec.get("source", f"cold_start_{strategy}"),
+                        "audio_features": self.dataset.get_audio_features(
+                            rec["track_id"]
+                        ),
+                    }
+                )
+        return enriched
 
     def _get_fallback_recommendations(self, limit: int) -> List[Dict]:
         """Get fallback recommendations when other methods fail."""

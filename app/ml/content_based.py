@@ -10,6 +10,8 @@ import numpy as np
 from sklearn.neighbors import NearestNeighbors
 from sklearn.preprocessing import StandardScaler
 
+from app.ml.data_quality import CONTENT_MODEL_FEATURES
+
 
 class ContentBasedRecommender:
     """
@@ -17,15 +19,7 @@ class ContentBasedRecommender:
     Uses cosine similarity on normalized feature vectors.
     """
 
-    FEATURES = [
-        "danceability",
-        "energy",
-        "valence",
-        "tempo",
-        "acousticness",
-        "instrumentalness",
-        "speechiness",
-    ]
+    FEATURES = CONTENT_MODEL_FEATURES
 
     def __init__(self, n_neighbors: int = 50, algorithm: str = "auto"):
         """
@@ -63,7 +57,12 @@ class ContentBasedRecommender:
     def _features_to_array(self, features: Union[Dict, List, np.ndarray]) -> np.ndarray:
         """Convert features to numpy array."""
         if isinstance(features, dict):
-            return np.array([features.get(f, 0) for f in self.FEATURES])
+            # Use scaler mean as default for missing features instead of 0
+            if self.is_fitted:
+                defaults = dict(zip(self.FEATURES, self.scaler.mean_))
+            else:
+                defaults = {f: 0.5 for f in self.FEATURES}
+            return np.array([features.get(f, defaults.get(f, 0.5)) for f in self.FEATURES])
         return np.asarray(features)
 
     def recommend(

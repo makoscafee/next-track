@@ -3,6 +3,14 @@ Machine Learning models for recommendation system
 """
 
 from app.ml.baselines import ContentBasedBaseline, PopularityBaseline, RandomBaseline
+from app.ml.cold_start import ColdStartRecommender
+from app.ml.data_quality import (
+    ALL_AUDIO_FEATURES,
+    CONTENT_MODEL_FEATURES,
+    DataPreprocessor,
+    DataValidator,
+    OutlierDetector,
+)
 from app.ml.collaborative import CollaborativeFilteringRecommender
 from app.ml.content_based import ContentBasedRecommender
 from app.ml.data_split import (
@@ -49,4 +57,12 @@ __all__ = [
     "create_interaction_splits",
     "create_track_splits",
     "get_user_ground_truth",
+    # Data quality
+    "DataValidator",
+    "OutlierDetector",
+    "DataPreprocessor",
+    "ALL_AUDIO_FEATURES",
+    "CONTENT_MODEL_FEATURES",
+    # Cold start
+    "ColdStartRecommender",
 ]

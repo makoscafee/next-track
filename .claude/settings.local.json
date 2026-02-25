@@ -2,7 +2,12 @@
   "permissions": {
     "allow": [
       "mcp__acp__Write",
-      "mcp__acp__Edit"
+      "mcp__acp__Edit",
+      "Bash(source:*)",
+      "Bash(pytest:*)",
+      "Bash(python3:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(pip install:*)"
     ]
   }
 }

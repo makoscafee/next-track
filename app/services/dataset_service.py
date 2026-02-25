@@ -3,12 +3,15 @@ Dataset service for loading and managing Kaggle Spotify dataset
 Provides audio features that Last.fm doesn't offer
 """
 
+import ast
 import logging
 import os
 from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
+
+from app.ml.data_quality import ALL_AUDIO_FEATURES, DataPreprocessor
 
 logger = logging.getLogger(__name__)
 
@@ -25,32 +28,25 @@ class DatasetService:
     - danceability, energy, valence, tempo, etc.: Audio features
     """
 
-    AUDIO_FEATURES = [
-        "danceability",
-        "energy",
-        "valence",
-        "tempo",
-        "acousticness",
-        "instrumentalness",
-        "speechiness",
-        "liveness",
-        "loudness",
-        "key",
-        "mode",
-    ]
+    AUDIO_FEATURES = ALL_AUDIO_FEATURES
 
-    def __init__(self, dataset_path: Optional[str] = None):
+    def __init__(self, dataset_path: Optional[str] = None, artists_path: Optional[str] = None):
         """
         Initialize dataset service.
 
         Args:
             dataset_path: Path to the CSV dataset file
+            artists_path: Path to the artists CSV file (for genre enrichment)
         """
         self.dataset_path = dataset_path or os.getenv(
             "DATASET_PATH", "data/processed/tracks.csv"
         )
+        self.artists_path = artists_path or os.getenv(
+            "ARTISTS_PATH", "data/processed/artists.csv"
+        )
         self.tracks_df: Optional[pd.DataFrame] = None
         self._loaded = False
+        self._quality_report: Optional[Dict] = None
 
     def load_dataset(self, force_reload: bool = False) -> bool:
         """
@@ -79,6 +75,9 @@ class DatasetService:
             # Clean data
             self._clean_data()
 
+            # Enrich with genre data from artists.csv
+            self._enrich_genres()
+
             self._loaded = True
             logger.info(f"Loaded {len(self.tracks_df)} tracks")
             return True
@@ -104,22 +103,116 @@ class DatasetService:
                 self.tracks_df.rename(columns={old_name: new_name}, inplace=True)
 
     def _clean_data(self):
-        """Clean and preprocess the dataset."""
-        # Remove duplicates
-        if "id" in self.tracks_df.columns:
-            self.tracks_df = self.tracks_df.drop_duplicates(subset=["id"])
+        """Clean and preprocess the dataset using the data quality pipeline."""
+        preprocessor = DataPreprocessor(
+            features=self.AUDIO_FEATURES,
+            max_missing_features=None,  # Keep all tracks for serving
+            handle_outliers=False,  # Light cleaning only
+        )
+        self.tracks_df, self._quality_report = preprocessor.preprocess(
+            self.tracks_df, validate=True
+        )
 
-        # Handle missing values in audio features
-        for feature in self.AUDIO_FEATURES:
-            if feature in self.tracks_df.columns:
-                median_val = self.tracks_df[feature].median()
-                self.tracks_df[feature] = self.tracks_df[feature].fillna(median_val)
+    def _enrich_genres(self):
+        """Enrich tracks with genre data from artists.csv."""
+        if not os.path.exists(self.artists_path):
+            logger.info("Artists file not found, skipping genre enrichment")
+            return
 
-        # Normalize tempo to 0-1 scale if present
-        if "tempo" in self.tracks_df.columns:
-            max_tempo = self.tracks_df["tempo"].max()
-            if max_tempo > 1:  # Not already normalized
-                self.tracks_df["tempo_normalized"] = self.tracks_df["tempo"] / 250.0
+        if "id_artists" not in self.tracks_df.columns:
+            logger.info("No id_artists column, skipping genre enrichment")
+            return
+
+        try:
+            logger.info("Enriching tracks with genre data...")
+            artists_df = pd.read_csv(
+                self.artists_path, usecols=["id", "genres"]
+            )
+
+            # Build artist_id -> genres lookup (only artists with genres)
+            artists_with_genres = artists_df[artists_df["genres"] != "[]"]
+            genre_lookup = {}
+            for _, row in artists_with_genres.iterrows():
+                try:
+                    genres = ast.literal_eval(row["genres"])
+                    if isinstance(genres, list) and genres:
+                        genre_lookup[row["id"]] = genres
+                except (ValueError, SyntaxError):
+                    continue
+
+            logger.info(f"Built genre lookup for {len(genre_lookup)} artists")
+
+            # Map track -> genres via id_artists
+            def _get_track_genres(id_artists_str):
+                try:
+                    artist_ids = ast.literal_eval(id_artists_str)
+                    if not isinstance(artist_ids, list):
+                        return []
+                    genres = []
+                    for aid in artist_ids:
+                        genres.extend(genre_lookup.get(aid, []))
+                    return list(set(genres))  # deduplicate
+                except (ValueError, SyntaxError):
+                    return []
+
+            self.tracks_df["genres"] = self.tracks_df["id_artists"].apply(
+                _get_track_genres
+            )
+
+            tracks_with_genres = (self.tracks_df["genres"].str.len() > 0).sum()
+            logger.info(
+                f"Genre enrichment complete: {tracks_with_genres} tracks "
+                f"({100 * tracks_with_genres / len(self.tracks_df):.1f}%) have genres"
+            )
+
+        except Exception as e:
+            logger.warning(f"Genre enrichment failed: {e}")
+            if "genres" not in self.tracks_df.columns:
+                self.tracks_df["genres"] = [[] for _ in range(len(self.tracks_df))]
+
+    def get_tracks_by_genre(
+        self, genres: List[str], limit: int = 20
+    ) -> List[Dict]:
+        """
+        Get tracks matching any of the specified genres, ranked by popularity.
+
+        Args:
+            genres: List of genre keywords to match (e.g. ["rock", "jazz"])
+            limit: Maximum results
+
+        Returns:
+            list: Matching tracks sorted by popularity
+        """
+        if not self._loaded:
+            self.load_dataset()
+
+        if self.tracks_df is None or "genres" not in self.tracks_df.columns:
+            return []
+
+        genres_lower = [g.lower().strip() for g in genres]
+
+        # Match tracks where any genre contains any of the query terms
+        def _matches_genre(track_genres):
+            if not isinstance(track_genres, list) or not track_genres:
+                return False
+            for tg in track_genres:
+                tg_lower = tg.lower()
+                for query in genres_lower:
+                    if query in tg_lower:
+                        return True
+            return False
+
+        mask = self.tracks_df["genres"].apply(_matches_genre)
+        matched = self.tracks_df[mask]
+
+        if matched.empty:
+            return []
+
+        # Rank by popularity
+        if "popularity" in matched.columns:
+            matched = matched.sort_values("popularity", ascending=False)
+
+        return matched.head(limit).to_dict("records")
 
     def get_track_by_id(self, track_id: str) -> Optional[Dict]:
         """

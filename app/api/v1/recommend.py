@@ -6,6 +6,7 @@ from flask import request
 from flask_restful import Resource
 
 from app.services import RecommendationService
+from app.services.user_service import get_user_service
 
 # Initialize service (will be properly managed with app context later)
 recommendation_service = RecommendationService()
@@ -53,6 +54,9 @@ class RecommendResource(Resource):
         limit = min(data.get("limit", 10), 50)  # Cap at 50
         include_explanation = data.get("include_explanation", False)
 
+        # Optional genre preferences for cold start
+        preferred_genres = data.get("preferred_genres", [])
+
         # Optional overrides for diversity/serendipity
         diversity_factor = data.get("diversity_factor")
         serendipity_factor = data.get("serendipity_factor")
@@ -99,6 +103,7 @@ class RecommendResource(Resource):
             include_explanation=include_explanation,
             diversity_factor=diversity_factor,
             serendipity_factor=serendipity_factor,
+            preferred_genres=preferred_genres or None,
         )
 
         return {
@@ -160,4 +165,88 @@ class SimilarTracksResource(Resource):
             "similar_tracks": similar,
             "seed_track": {"artist": artist, "track": track},
             "metadata": {"count": len(similar)},
+        }, 200
+
+
+class OnboardingResource(Resource):
+    """Genre-preference onboarding for new users."""
+
+    def post(self):
+        """
+        Onboard a new user with genre/mood preferences and return initial recommendations.
+
+        Request body:
+        {
+            "user_id": "string" (required),
+            "preferred_genres": ["rock", "electronic", "jazz"] (optional),
+            "energy_preference": "high" | "medium" | "low" (optional),
+            "mood_preference": "happy" | "calm" | "energetic" | "melancholic" | "focused" (optional),
+            "limit": 10
+        }
+
+        Returns:
+        {
+            "status": "success",
+            "user": {...},
+            "recommendations": [...],
+            "strategy": "genre" | "preferences" | "popular"
+        }
+        """
+        data = request.get_json() or {}
+
+        user_id = data.get("user_id")
+        if not user_id:
+            return {"status": "error", "message": "user_id is required"}, 400
+
+        preferred_genres = data.get("preferred_genres", [])
+        energy_preference = data.get("energy_preference")
+        mood_preference = data.get("mood_preference")
+        limit = min(data.get("limit", 10), 50)
+
+        # Create or get user and store preferences
+        service = get_user_service()
+        user = service.get_or_create_user(external_id=user_id)
+
+        preferences = {}
+        if preferred_genres:
+            preferences["preferred_genres"] = preferred_genres
+        if energy_preference:
+            preferences["energy_preference"] = energy_preference
+        if mood_preference:
+            preferences["mood_preference"] = mood_preference
+
+        if preferences:
+            service.update_user_preferences(user_id, preferences)
+            user = service.get_user(user_id)
+
+        # Initialize models and get cold start recommendations
+        recommendation_service.initialize_models()
+
+        cold_start = recommendation_service.cold_start
+        if cold_start.is_initialized:
+            recs, strategy = cold_start.get_cold_start_recommendations(
+                user_id=user_id,
+                preferred_genres=preferred_genres or None,
+                preferences=preferences or None,
+                n=limit,
+            )
+            # Enrich with metadata
+            recommendations = recommendation_service._enrich_cold_start_recs(
+                recs, strategy
+            )
+        else:
+            recommendations = recommendation_service._get_fallback_recommendations(
+                limit
+            )
+            strategy = "fallback"
+
+        return {
+            "status": "success",
+            "user": user.to_dict() if user else None,
+            "recommendations": recommendations,
+            "metadata": {
+                "count": len(recommendations),
+                "strategy": strategy,
+                "preferred_genres": preferred_genres,
+            },
         }, 200

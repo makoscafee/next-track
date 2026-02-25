@@ -126,16 +126,16 @@ This file tracks the implementation progress for the NextTrack music recommendat
 ## 🟡 Important - Remaining
 
 ### Data Quality & Preprocessing
-- [ ] Handle missing audio features (imputation or filter)
-- [ ] Outlier detection for audio features
-- [ ] Data validation pipeline (check for nulls, ranges)
-- [ ] Feature normalization consistency check
+- [x] Handle missing audio features (imputation or filter) - `app/ml/data_quality.py` DataPreprocessor
+- [x] Outlier detection for audio features - `app/ml/data_quality.py` OutlierDetector (IQR-based)
+- [x] Data validation pipeline (check for nulls, ranges) - `app/ml/data_quality.py` DataValidator
+- [x] Feature normalization consistency check - unified constants & preprocessing pipeline
 
 ### Cold Start Strategy
-- [ ] Implement popularity-based fallback for new users
-- [ ] Create genre-preference onboarding endpoint
-- [ ] Default recommendations for anonymous users
-- [ ] Content-based only mode for cold start
+- [x] Implement popularity-based fallback for new users - `app/ml/cold_start.py` ColdStartRecommender
+- [x] Create genre-preference onboarding endpoint - `POST /api/v1/onboard`
+- [x] Default recommendations for anonymous users - popularity cascade in cold start
+- [x] Content-based only mode for cold start - preference-based strategy via content model
 
 ### Search & Results Improvements
 - [ ] Add pagination (limit/offset) to search endpoints
