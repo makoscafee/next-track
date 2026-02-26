@@ -87,14 +87,21 @@ class RecommendationService:
         """
         recommendations = []
 
+        # When genres are requested, fetch more candidates from every source
+        # so the genre filter has a large enough pool to draw from.
+        candidate_limit = limit * 4 if preferred_genres else limit * 2
+
         # Strategy 1: Use Last.fm similar tracks if seed tracks provided
         if seed_tracks:
-            lastfm_recs = self._get_lastfm_recommendations(seed_tracks, limit * 2)
+            lastfm_recs = self._get_lastfm_recommendations(seed_tracks, candidate_limit)
             recommendations.extend(lastfm_recs)
 
         # Strategy 2: Use mood-based recommendations from dataset (context-aware)
+        # Pass preferred_genres so the query filters at the dataset level.
         if mood:
-            mood_recs = self._get_mood_recommendations(mood, limit, context)
+            mood_recs = self._get_mood_recommendations(
+                mood, candidate_limit, context, preferred_genres=preferred_genres
+            )
             recommendations.extend(mood_recs)
 
         # Strategy 3: If we have dataset features, use hybrid model with A/B testing
@@ -111,7 +118,7 @@ class RecommendationService:
                     user_id=user_id,
                     seed_track_features=seed_features,
                     mood=mood,
-                    n_recommendations=limit,
+                    n_recommendations=candidate_limit,
                     include_explanation=include_explanation,
                     context=context,
                     diversity_factor=diversity_factor,
@@ -142,19 +149,21 @@ class RecommendationService:
 
                         recommendations.append(enriched)
 
-        # Deduplicate and rank
+        # Apply genre filter on the full candidate pool before truncating.
+        # Mood tracks are already genre-filtered at query time; this aligns
+        # Last.fm / hybrid candidates too, while still having plenty to choose from.
+        # Falls back to the unfiltered pool only if zero tracks survive.
+        if preferred_genres and recommendations:
+            recommendations = self._filter_by_genre(
+                recommendations, preferred_genres, len(recommendations), fallback=True
+            )
+
+        # Deduplicate, interleave sources, and truncate to limit
         recommendations = self._deduplicate_and_rank(recommendations, limit)
 
         # Filter explicit tracks if requested
         if exclude_explicit:
             recommendations = self._filter_explicit(recommendations)
-
-        # Apply genre filter if requested — keep genre-matched tracks,
-        # fall back to unfiltered if fewer than 3 survive
-        if preferred_genres and recommendations:
-            recommendations = self._filter_by_genre(
-                recommendations, preferred_genres, limit, fallback=True
-            )
 
         # Cold start strategy for new/anonymous users
         if not recommendations and self.cold_start.is_initialized:
@@ -222,7 +231,11 @@ class RecommendationService:
         return recommendations
 
     def _get_mood_recommendations(
-        self, mood: str, limit: int, context: Optional[Dict] = None
+        self,
+        mood: str,
+        limit: int,
+        context: Optional[Dict] = None,
+        preferred_genres: Optional[List[str]] = None,
     ) -> List[Dict]:
         """Get context-aware mood-based recommendations from dataset."""
         # Research-backed mood to valence/energy mapping (wider ranges for filtering)
@@ -267,9 +280,17 @@ class RecommendationService:
             energy_range[0] = max(0.0, min(1.0, energy_range[0] + e_mod))
             energy_range[1] = max(0.0, min(1.0, energy_range[1] + e_mod))
 
-        tracks = self.dataset.get_tracks_by_mood(
-            tuple(valence_range), tuple(energy_range), limit=limit
-        )
+        if preferred_genres:
+            tracks = self.dataset.get_tracks_by_mood_and_genre(
+                tuple(valence_range),
+                tuple(energy_range),
+                genres=preferred_genres,
+                limit=limit,
+            )
+        else:
+            tracks = self.dataset.get_tracks_by_mood(
+                tuple(valence_range), tuple(energy_range), limit=limit
+            )
 
         return [
             {
@@ -410,7 +431,13 @@ class RecommendationService:
     def _deduplicate_and_rank(
         self, recommendations: List[Dict], limit: int
     ) -> List[Dict]:
-        """Deduplicate recommendations by track_id and name+artist, then rank by score."""
+        """
+        Deduplicate by track_id / name+artist, then interleave across sources
+        so no single source monopolises the final list.
+
+        Source priority order: hybrid → lastfm_similar → mood_match → others
+        Within each source, tracks are sorted by score descending before interleaving.
+        """
         seen_ids: set = set()
         seen_names: set = set()
         unique = []
@@ -431,10 +458,34 @@ class RecommendationService:
             seen_names.add(name_key)
             unique.append(rec)
 
-        # Sort by score (descending)
-        unique.sort(key=lambda x: x.get("score", 0), reverse=True)
+        # Group by source, sorted by score within each group
+        source_order = ["hybrid", "lastfm_similar", "mood_match"]
+        buckets: dict = {s: [] for s in source_order}
+        buckets["other"] = []
 
-        return unique[:limit]
+        for rec in unique:
+            src = rec.get("source", "other")
+            if src in buckets:
+                buckets[src].append(rec)
+            else:
+                buckets["other"].append(rec)
+
+        for src in list(buckets.keys()):
+            buckets[src].sort(key=lambda x: x.get("score", 0), reverse=True)
+
+        # Round-robin interleave across non-empty buckets
+        ordered_keys = source_order + ["other"]
+        result = []
+        while len(result) < limit:
+            added = False
+            for key in ordered_keys:
+                if buckets[key] and len(result) < limit:
+                    result.append(buckets[key].pop(0))
+                    added = True
+            if not added:
+                break
+
+        return result
 
     def _filter_explicit(self, recommendations: List[Dict]) -> List[Dict]:
         """Remove explicit tracks from recommendations."""
@@ -487,8 +538,8 @@ class RecommendationService:
 
         filtered = [r for r in recommendations if _matches(r)]
 
-        if fallback and len(filtered) < 3:
-            # Not enough genre matches — return original list unchanged
+        if fallback and len(filtered) == 0:
+            # Absolutely no genre matches — return original list unchanged
             return recommendations[:limit]
 
         return filtered[:limit]

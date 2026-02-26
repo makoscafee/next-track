@@ -393,6 +393,71 @@ class DatasetService:
         )
         return results.to_dict("records")
 
+    def get_tracks_by_mood_and_genre(
+        self,
+        valence_range: tuple,
+        energy_range: tuple,
+        genres: List[str],
+        limit: int = 20,
+        exclude_explicit: bool = False,
+    ) -> List[Dict]:
+        """
+        Get tracks matching both mood parameters and genre, sampling randomly from matches.
+
+        Applies the valence/energy mask and genre mask together on the full dataset
+        so genre filtering works on a large pool rather than a tiny pre-filtered list.
+
+        Args:
+            valence_range: (min, max) valence values
+            energy_range: (min, max) energy values
+            genres: List of genre keywords to match
+            limit: Maximum results
+            exclude_explicit: Filter out explicit tracks
+
+        Returns:
+            list: Matching tracks (random sample)
+        """
+        if not self._loaded:
+            self.load_dataset()
+
+        if self.tracks_df is None:
+            return []
+
+        mood_mask = (
+            (self.tracks_df["valence"] >= valence_range[0])
+            & (self.tracks_df["valence"] <= valence_range[1])
+            & (self.tracks_df["energy"] >= energy_range[0])
+            & (self.tracks_df["energy"] <= energy_range[1])
+        )
+
+        if "genres" in self.tracks_df.columns and genres:
+            genres_lower = [g.lower().strip() for g in genres]
+
+            def _matches_genre(track_genres):
+                if not isinstance(track_genres, list) or not track_genres:
+                    return False
+                for tg in track_genres:
+                    tg_lower = tg.lower()
+                    if any(q in tg_lower for q in genres_lower):
+                        return True
+                return False
+
+            genre_mask = self.tracks_df["genres"].apply(_matches_genre)
+            combined_mask = mood_mask & genre_mask
+        else:
+            combined_mask = mood_mask
+
+        if exclude_explicit and "explicit" in self.tracks_df.columns:
+            combined_mask = combined_mask & (self.tracks_df["explicit"] != 1)
+
+        n_matches = combined_mask.sum()
+        if n_matches == 0:
+            # No genre+mood overlap — fall back to mood-only
+            return self.get_tracks_by_mood(valence_range, energy_range, limit)
+
+        matched = self.tracks_df[combined_mask]
+        return matched.sample(n=min(limit, len(matched))).to_dict("records")
+
     def get_random_tracks(self, n: int = 10) -> List[Dict]:
         """
         Get random tracks from the dataset.
