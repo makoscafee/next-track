@@ -57,6 +57,9 @@ class RecommendResource(Resource):
         # Optional genre preferences for cold start
         preferred_genres = data.get("preferred_genres", [])
 
+        # Optional explicit filter
+        exclude_explicit = bool(data.get("exclude_explicit", False))
+
         # Optional overrides for diversity/serendipity
         diversity_factor = data.get("diversity_factor")
         serendipity_factor = data.get("serendipity_factor")
@@ -104,6 +107,7 @@ class RecommendResource(Resource):
             diversity_factor=diversity_factor,
             serendipity_factor=serendipity_factor,
             preferred_genres=preferred_genres or None,
+            exclude_explicit=exclude_explicit,
         )
 
         return {

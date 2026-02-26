@@ -7,7 +7,8 @@
       "Bash(pytest:*)",
       "Bash(python3:*)",
       "Bash(python -m pytest:*)",
-      "Bash(pip install:*)"
+      "Bash(pip install:*)",
+      "Bash(/Users/barnie/miniconda3/bin/python -m pytest:*)"
     ]
   }
 }

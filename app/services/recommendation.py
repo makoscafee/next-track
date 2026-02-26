@@ -66,6 +66,7 @@ class RecommendationService:
         diversity_factor: Optional[float] = None,
         serendipity_factor: Optional[float] = None,
         preferred_genres: Optional[List[str]] = None,
+        exclude_explicit: bool = False,
     ) -> List[Dict]:
         """
         Get hybrid recommendations combining Last.fm and dataset.
@@ -79,6 +80,7 @@ class RecommendationService:
             include_explanation: Whether to include detailed explanations
             diversity_factor: Override diversity factor (0-1)
             serendipity_factor: Override serendipity factor (0-1)
+            exclude_explicit: Filter out explicit tracks from results
 
         Returns:
             list: Recommended tracks with scores and metadata
@@ -143,6 +145,10 @@ class RecommendationService:
         # Deduplicate and rank
         recommendations = self._deduplicate_and_rank(recommendations, limit)
 
+        # Filter explicit tracks if requested
+        if exclude_explicit:
+            recommendations = self._filter_explicit(recommendations)
+
         # Cold start strategy for new/anonymous users
         if not recommendations and self.cold_start.is_initialized:
             is_cold = ColdStartRecommender.is_cold_start(
@@ -155,6 +161,8 @@ class RecommendationService:
                     n=limit,
                 )
                 recommendations = self._enrich_cold_start_recs(cold_recs, strategy)
+                if exclude_explicit:
+                    recommendations = self._filter_explicit(recommendations)
 
         # Fallback to chart tracks if still no recommendations
         if not recommendations:
@@ -395,22 +403,42 @@ class RecommendationService:
     def _deduplicate_and_rank(
         self, recommendations: List[Dict], limit: int
     ) -> List[Dict]:
-        """Deduplicate recommendations and rank by score."""
-        seen = set()
+        """Deduplicate recommendations by track_id and name+artist, then rank by score."""
+        seen_ids: set = set()
+        seen_names: set = set()
         unique = []
 
         for rec in recommendations:
-            # Create unique key from name and artist
-            key = f"{rec.get('name', '').lower()}_{rec.get('artist', '').lower()}"
+            track_id = rec.get("track_id")
+            name_key = (
+                f"{rec.get('name', '').lower()}_{rec.get('artist', '').lower()}"
+            )
 
-            if key not in seen:
-                seen.add(key)
-                unique.append(rec)
+            if track_id and track_id in seen_ids:
+                continue
+            if name_key in seen_names:
+                continue
+
+            if track_id:
+                seen_ids.add(track_id)
+            seen_names.add(name_key)
+            unique.append(rec)
 
         # Sort by score (descending)
         unique.sort(key=lambda x: x.get("score", 0), reverse=True)
 
         return unique[:limit]
+
+    def _filter_explicit(self, recommendations: List[Dict]) -> List[Dict]:
+        """Remove explicit tracks from recommendations."""
+        filtered = []
+        for rec in recommendations:
+            # Check audio_features dict first, then top-level explicit key
+            audio = rec.get("audio_features") or {}
+            is_explicit = rec.get("explicit") or audio.get("explicit")
+            if not is_explicit:
+                filtered.append(rec)
+        return filtered
 
     def _enrich_cold_start_recs(
         self, cold_recs: List[Dict], strategy: str

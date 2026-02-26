@@ -138,10 +138,10 @@ This file tracks the implementation progress for the NextTrack music recommendat
 - [x] Content-based only mode for cold start - preference-based strategy via content model
 
 ### Search & Results Improvements
-- [ ] Add pagination (limit/offset) to search endpoints
-- [ ] Cache search results in Redis (5 min TTL)
-- [ ] Deduplication of recommendations
-- [ ] Filter explicit tracks option
+- [x] Add pagination (limit/offset) to search endpoints - `offset` param + `total`/`has_more` in metadata
+- [x] Cache search results in Redis (5 min TTL) - `@cache.cached(timeout=300, query_string=True)` on search endpoints
+- [x] Deduplication of recommendations - dedup by `track_id` AND `name+artist` in `_deduplicate_and_rank()`
+- [x] Filter explicit tracks option - `exclude_explicit` param on search + recommend endpoints
 
 ---
 

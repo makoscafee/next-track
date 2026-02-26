@@ -5,6 +5,7 @@ Track features API endpoints
 from flask import request
 from flask_restful import Resource
 
+from app.extensions import cache
 from app.services import DatasetService, LastFMService
 from app.services.deezer_service import get_deezer_service
 
@@ -60,25 +61,42 @@ class TrackFeaturesResource(Resource):
 class TrackSearchResource(Resource):
     """Search for tracks."""
 
+    @cache.cached(timeout=300, query_string=True)
     def get(self):
         """
         Search for tracks by name or artist.
 
         Query params:
             q: Search query
-            limit: Max results (default 10)
+            limit: Max results (default 10, max 50)
+            offset: Results to skip for pagination (default 0)
             source: 'dataset', 'lastfm', or 'both' (default 'both')
+            exclude_explicit: Filter explicit tracks (default false)
 
         Returns:
         {
             "status": "success",
             "results": [...],
-            "metadata": {...}
+            "metadata": {
+                "query": str,
+                "count": int,
+                "total": int,
+                "offset": int,
+                "limit": int,
+                "has_more": bool,
+                "source": str
+            }
         }
         """
         query = request.args.get("q", "")
         limit = min(int(request.args.get("limit", 10)), 50)
+        offset = max(int(request.args.get("offset", 0)), 0)
         source = request.args.get("source", "both")
+        exclude_explicit = request.args.get("exclude_explicit", "false").lower() in (
+            "true",
+            "1",
+            "yes",
+        )
 
         if not query:
             return {
@@ -87,23 +105,31 @@ class TrackSearchResource(Resource):
             }, 400
 
         results = []
+        total = 0
 
         # Search dataset
         if source in ("dataset", "both"):
             dataset_service.load_dataset()
-            dataset_results = dataset_service.search_tracks(query, limit=limit)
+            dataset_results, dataset_total = dataset_service.search_tracks(
+                query,
+                limit=limit,
+                offset=offset,
+                exclude_explicit=exclude_explicit,
+            )
+            total += dataset_total
             for track in dataset_results:
                 results.append(
                     {
                         "name": track.get("name"),
                         "artist": track.get("artists"),
                         "track_id": track.get("id"),
+                        "explicit": bool(track.get("explicit", False)),
                         "source": "dataset",
                         "has_audio_features": True,
                     }
                 )
 
-        # Search Last.fm
+        # Search Last.fm (no offset support — always fetches from start)
         if source in ("lastfm", "both"):
             lastfm_results = lastfm_service.search_tracks(query, limit=limit)
             for track in lastfm_results:
@@ -118,12 +144,19 @@ class TrackSearchResource(Resource):
                     }
                 )
 
+        count = len(results)
+        has_more = (offset + count) < total if source in ("dataset",) else False
+
         return {
             "status": "success",
-            "results": results[:limit],
+            "results": results,
             "metadata": {
                 "query": query,
-                "count": len(results[:limit]),
+                "count": count,
+                "total": total,
+                "offset": offset,
+                "limit": limit,
+                "has_more": has_more,
                 "source": source,
             },
         }, 200
@@ -132,6 +165,7 @@ class TrackSearchResource(Resource):
 class TrackInfoResource(Resource):
     """Get detailed track info from Last.fm."""
 
+    @cache.cached(timeout=300, query_string=True)
     def get(self):
         """
         Get detailed track information from Last.fm.
@@ -251,6 +285,7 @@ class TrackPreviewResource(Resource):
 class TrackPreviewSearchResource(Resource):
     """Search for tracks with preview URLs."""
 
+    @cache.cached(timeout=300, query_string=True)
     def get(self):
         """
         Search for tracks on Deezer (includes preview URLs).

@@ -6,7 +6,7 @@ Provides audio features that Last.fm doesn't offer
 import ast
 import logging
 import os
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -171,7 +171,10 @@ class DatasetService:
                 self.tracks_df["genres"] = [[] for _ in range(len(self.tracks_df))]
 
     def get_tracks_by_genre(
-        self, genres: List[str], limit: int = 20
+        self,
+        genres: List[str],
+        limit: int = 20,
+        exclude_explicit: bool = False,
     ) -> List[Dict]:
         """
         Get tracks matching any of the specified genres, ranked by popularity.
@@ -179,6 +182,7 @@ class DatasetService:
         Args:
             genres: List of genre keywords to match (e.g. ["rock", "jazz"])
             limit: Maximum results
+            exclude_explicit: Filter out explicit tracks
 
         Returns:
             list: Matching tracks sorted by popularity
@@ -203,6 +207,10 @@ class DatasetService:
             return False
 
         mask = self.tracks_df["genres"].apply(_matches_genre)
+
+        if exclude_explicit and "explicit" in self.tracks_df.columns:
+            mask = mask & (self.tracks_df["explicit"] != 1)
+
         matched = self.tracks_df[mask]
 
         if matched.empty:
@@ -272,22 +280,30 @@ class DatasetService:
 
         return tracks.iloc[0].to_dict()
 
-    def search_tracks(self, query: str, limit: int = 10) -> List[Dict]:
+    def search_tracks(
+        self,
+        query: str,
+        limit: int = 10,
+        offset: int = 0,
+        exclude_explicit: bool = False,
+    ) -> Tuple[List[Dict], int]:
         """
-        Search tracks by name or artist.
+        Search tracks by name or artist with pagination.
 
         Args:
             query: Search query
             limit: Maximum results
+            offset: Number of results to skip
+            exclude_explicit: Filter out explicit tracks
 
         Returns:
-            list: Matching tracks
+            tuple: (matching tracks list, total match count)
         """
         if not self._loaded:
             self.load_dataset()
 
         if self.tracks_df is None:
-            return []
+            return [], 0
 
         query_lower = query.lower()
 
@@ -296,8 +312,13 @@ class DatasetService:
             query_lower, na=False
         ) | self.tracks_df["artists"].str.lower().str.contains(query_lower, na=False)
 
-        results = self.tracks_df[mask].head(limit)
-        return results.to_dict("records")
+        if exclude_explicit and "explicit" in self.tracks_df.columns:
+            mask = mask & (self.tracks_df["explicit"] != 1)
+
+        matched = self.tracks_df[mask]
+        total = len(matched)
+        results = matched.iloc[offset : offset + limit]
+        return results.to_dict("records"), total
 
     def get_audio_features(self, track_id: str) -> Optional[Dict]:
         """
