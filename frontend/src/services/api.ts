@@ -1,287 +1,149 @@
-import axios from "axios";
-import type { AxiosInstance, AxiosError } from "axios";
 import type {
   MoodAnalyzeResponse,
+  MoodAnalysis,
+  MoodContext,
+  ApiTrack,
   RecommendationRequest,
   RecommendationResponse,
-  Track,
-  DeezerTrack,
-  Experiment,
-  ExperimentResults,
-  VariantAssignment,
-  AdminStats,
-  FeedbackEntry,
-  SystemHealth,
-  LoginResponse,
-} from "../types";
+  DeezerPreview,
+  DeezerSearchResult,
+} from './types';
+import type { Track } from '../app/components/TrackCard';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "/api/v1";
+const API_BASE = '/api/v1';
 
-class ApiService {
-  private client: AxiosInstance;
-  private token: string | null = null;
+// Placeholder images per mood/genre for when Deezer has no cover art
+const PLACEHOLDER_IMAGE =
+  'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=400&h=400&fit=crop';
 
-  constructor() {
-    this.client = axios.create({
-      baseURL: API_BASE_URL,
-      headers: {
-        "Content-Type": "application/json",
-      },
-    });
+async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: { 'Content-Type': 'application/json' },
+    ...options,
+  });
+  if (!res.ok) {
+    throw new Error(`API error ${res.status}: ${res.statusText}`);
+  }
+  return res.json() as Promise<T>;
+}
 
-    // Load token from localStorage
-    this.token = localStorage.getItem("admin_token");
+// Map API emotion label → frontend2 mood button id
+export const EMOTION_TO_MOOD: Record<string, string> = {
+  joy: 'happy',
+  happiness: 'happy',
+  happy: 'happy',
+  sadness: 'sad',
+  sad: 'sad',
+  fear: 'sad',
+  anger: 'energetic',
+  disgust: 'neutral',
+  surprise: 'neutral',
+  neutral: 'neutral',
+  energetic: 'energetic',
+  calm: 'calm',
+  relaxed: 'calm',
+  romantic: 'romantic',
+  focused: 'focused',
+};
 
-    // Add auth interceptor
-    this.client.interceptors.request.use((config) => {
-      if (this.token) {
-        config.headers.Authorization = `Bearer ${this.token}`;
-      }
-      return config;
-    });
+// Map API track + optional Deezer preview to frontend2 Track type
+export function mapApiTrack(apiTrack: ApiTrack, deezer?: DeezerPreview): Track {
+  const af = apiTrack.audio_features ?? {};
+  const score = apiTrack.score ?? 0.8;
 
-    // Handle errors
-    this.client.interceptors.response.use(
-      (response) => response,
-      (error: AxiosError) => {
-        if (error.response?.status === 401) {
-          this.clearToken();
-        }
-        return Promise.reject(error);
-      },
+  const reason =
+    apiTrack.detailed_explanation?.summary ||
+    apiTrack.explanation ||
+    'Recommended based on your mood and preferences';
+
+  const imageUrl =
+    deezer?.cover_medium ||
+    deezer?.cover_small ||
+    PLACEHOLDER_IMAGE;
+
+  return {
+    id: apiTrack.track_id ?? `${apiTrack.name}-${apiTrack.artist}`,
+    title: apiTrack.name,
+    artist: apiTrack.artist,
+    album: apiTrack.album ?? '',
+    imageUrl,
+    matchScore: Math.round(score * 100),
+    audioFeatures: {
+      valence: Math.round((af.valence ?? 0.5) * 100),
+      energy: Math.round((af.energy ?? 0.5) * 100),
+      danceability: Math.round((af.danceability ?? 0.5) * 100),
+      tempo: Math.round(af.tempo ?? 120),
+    },
+    reason,
+    previewUrl: deezer?.preview_url,
+  };
+}
+
+// Analyze free-text mood
+export async function analyzeMood(text: string): Promise<MoodAnalysis> {
+  const data = await apiFetch<MoodAnalyzeResponse>('/mood/analyze', {
+    method: 'POST',
+    body: JSON.stringify({ text, include_context: true }),
+  });
+  return data.mood_analysis;
+}
+
+// Get mood-based recommendations (simple path)
+export async function getMoodRecommendations(
+  mood: string,
+  limit = 12,
+  context?: MoodContext,
+): Promise<ApiTrack[]> {
+  const data = await apiFetch<{ status: string; recommendations: ApiTrack[] }>(
+    '/mood/recommend',
+    {
+      method: 'POST',
+      body: JSON.stringify({ mood, limit, context }),
+    },
+  );
+  return data.recommendations;
+}
+
+// Get hybrid recommendations (seed tracks, context, etc.)
+export async function getRecommendations(
+  request: RecommendationRequest,
+): Promise<RecommendationResponse> {
+  return apiFetch<RecommendationResponse>('/recommend', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  });
+}
+
+// Search tracks with Deezer preview URLs (for seed track search)
+export async function searchTracksWithPreview(
+  query: string,
+  limit = 6,
+): Promise<DeezerSearchResult[]> {
+  const data = await apiFetch<{ status: string; results: DeezerSearchResult[] }>(
+    `/tracks/preview/search?q=${encodeURIComponent(query)}&limit=${limit}`,
+  );
+  return data.results ?? [];
+}
+
+// Fetch Deezer preview for a single track
+export async function getTrackPreview(
+  artist: string,
+  track: string,
+): Promise<DeezerPreview | null> {
+  try {
+    const data = await apiFetch<{ status: string; preview: DeezerPreview }>(
+      `/tracks/preview?artist=${encodeURIComponent(artist)}&track=${encodeURIComponent(track)}`,
     );
-  }
-
-  setToken(token: string) {
-    this.token = token;
-    localStorage.setItem("admin_token", token);
-  }
-
-  clearToken() {
-    this.token = null;
-    localStorage.removeItem("admin_token");
-  }
-
-  isAuthenticated(): boolean {
-    return !!this.token;
-  }
-
-  // Auth endpoints
-  async login(username: string, password: string): Promise<LoginResponse> {
-    const response = await this.client.post<LoginResponse>("/auth/login", {
-      username,
-      password,
-    });
-    if (response.data.access_token) {
-      this.setToken(response.data.access_token);
-    }
-    return response.data;
-  }
-
-  async verifyToken(): Promise<boolean> {
-    try {
-      await this.client.get("/auth/verify");
-      return true;
-    } catch {
-      this.clearToken();
-      return false;
-    }
-  }
-
-  logout() {
-    this.clearToken();
-  }
-
-  // Mood endpoints
-  async analyzeMood(
-    text: string,
-    includeContext = true,
-  ): Promise<MoodAnalyzeResponse> {
-    const response = await this.client.post<MoodAnalyzeResponse>(
-      "/mood/analyze",
-      {
-        text,
-        include_context: includeContext,
-      },
-    );
-    return response.data;
-  }
-
-  async getMoodRecommendations(
-    mood: string,
-    limit = 10,
-    context?: { time_of_day?: string; activity?: string; weather?: string },
-  ): Promise<Track[]> {
-    const response = await this.client.post<{ recommendations: Track[] }>(
-      "/mood/recommend",
-      {
-        mood,
-        limit,
-        context,
-      },
-    );
-    return response.data.recommendations;
-  }
-
-  // Recommendation endpoints
-  async getRecommendations(
-    request: RecommendationRequest,
-  ): Promise<RecommendationResponse> {
-    const response = await this.client.post<RecommendationResponse>(
-      "/recommend",
-      request,
-    );
-    return response.data;
-  }
-
-  async getSimilarTracks(
-    artist: string,
-    track: string,
-    limit = 10,
-  ): Promise<Track[]> {
-    const response = await this.client.post<{ similar_tracks: Track[] }>(
-      "/recommend/similar",
-      {
-        artist,
-        track,
-        limit,
-      },
-    );
-    return response.data.similar_tracks;
-  }
-
-  // Track endpoints
-  async searchTracks(
-    query: string,
-    limit = 10,
-    source = "both",
-  ): Promise<Track[]> {
-    const response = await this.client.get<{ results: Track[] }>(
-      "/tracks/search",
-      {
-        params: { q: query, limit, source },
-      },
-    );
-    return response.data.results;
-  }
-
-  async getTrackPreview(
-    artist: string,
-    track: string,
-  ): Promise<DeezerTrack | null> {
-    try {
-      const response = await this.client.get<{ preview: DeezerTrack }>(
-        "/tracks/preview",
-        {
-          params: { artist, track },
-        },
-      );
-      return response.data.preview;
-    } catch {
-      return null;
-    }
-  }
-
-  async searchTracksWithPreview(
-    query: string,
-    limit = 10,
-  ): Promise<DeezerTrack[]> {
-    const response = await this.client.get<{ results: DeezerTrack[] }>(
-      "/tracks/preview/search",
-      {
-        params: { q: query, limit },
-      },
-    );
-    return response.data.results;
-  }
-
-  async getTrackFeatures(
-    trackId: string,
-  ): Promise<{ audio_features: Record<string, number> } | null> {
-    try {
-      const response = await this.client.get(`/tracks/${trackId}/features`);
-      return response.data;
-    } catch {
-      return null;
-    }
-  }
-
-  // Feedback endpoint
-  async recordFeedback(
-    userId: string,
-    trackId: string,
-    feedbackType: "click" | "play" | "skip" | "save" | "listen_time",
-    value = 1.0,
-  ): Promise<void> {
-    await this.client.post("/feedback", {
-      user_id: userId,
-      track_id: trackId,
-      feedback_type: feedbackType,
-      value,
-    });
-  }
-
-  // Experiment endpoints (public)
-  async getExperiments(): Promise<Experiment[]> {
-    const response = await this.client.get<{ experiments: Experiment[] }>(
-      "/experiments",
-    );
-    return response.data.experiments;
-  }
-
-  async getExperiment(name: string): Promise<ExperimentResults> {
-    const response = await this.client.get<ExperimentResults>(
-      `/experiments/${name}`,
-    );
-    return response.data;
-  }
-
-  async getVariantAssignment(
-    experimentName: string,
-    userId: string,
-  ): Promise<VariantAssignment> {
-    const response = await this.client.get<VariantAssignment>(
-      `/experiments/${experimentName}/variant`,
-      { params: { user_id: userId } },
-    );
-    return response.data;
-  }
-
-  // Admin endpoints (protected)
-  async getAdminStats(): Promise<AdminStats> {
-    const response = await this.client.get<AdminStats>("/admin/stats");
-    return response.data;
-  }
-
-  async getAdminFeedbackLog(
-    limit = 50,
-    feedbackType?: string,
-  ): Promise<FeedbackEntry[]> {
-    const response = await this.client.get<{ entries: FeedbackEntry[] }>(
-      "/admin/feedback",
-      {
-        params: { limit, feedback_type: feedbackType },
-      },
-    );
-    return response.data.entries;
-  }
-
-  async getAdminExperimentDetail(name: string): Promise<{
-    experiment: ExperimentResults;
-    comparison: Record<
-      string,
-      Record<string, { mean: number; std: number; count: number }>
-    >;
-  }> {
-    const response = await this.client.get(`/admin/experiments/${name}`);
-    return response.data;
-  }
-
-  async getSystemHealth(): Promise<SystemHealth> {
-    const response = await this.client.get<SystemHealth>("/admin/health");
-    return response.data;
+    return data.preview ?? null;
+  } catch {
+    return null;
   }
 }
 
-export const api = new ApiService();
-export default api;
+// Enrich a list of API tracks with Deezer previews (best-effort, parallel)
+export async function enrichWithPreviews(apiTracks: ApiTrack[]): Promise<Track[]> {
+  const previews = await Promise.all(
+    apiTracks.map((t) => getTrackPreview(t.artist, t.name)),
+  );
+  return apiTracks.map((t, i) => mapApiTrack(t, previews[i] ?? undefined));
+}

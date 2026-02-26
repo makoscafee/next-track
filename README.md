@@ -22,8 +22,9 @@ An emotionally-aware, context-sensitive music recommendation API that combines c
 - **Backend**: Python 3.10+, Flask, Flask-RESTful
 - **Database**: PostgreSQL 15, Redis 7
 - **ML**: scikit-learn, Transformers (DistilRoBERTa), VADER sentiment analysis, implicit (ALS)
-- **APIs**: Last.fm API
+- **APIs**: Last.fm API, Deezer API (track previews & cover art)
 - **Data**: Kaggle Spotify Dataset (600K+ tracks)
+- **Frontend**: React 18, Vite, Tailwind CSS, Radix UI (`frontend/`)
 
 ## Quick Start
 
@@ -89,6 +90,18 @@ python run.py
 ```
 
 The API will be available at `http://localhost:5000`
+
+> **Note:** On macOS, port 5000 is used by AirPlay. Use `PORT=5001 python run.py` to run on port 5001 instead.
+
+### 7. Run the Frontend (Optional)
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The demo UI will be available at `http://localhost:5173`. It proxies all `/api` requests to the backend (configured in `frontend/vite.config.ts`). Make sure the backend is running first.
 
 ## API Endpoints
 
@@ -281,6 +294,72 @@ Content-Type: application/json
 
 Returns initial recommendations using the cold start strategy (genre → preferences → popularity fallback).
 
+### Admin Authentication
+
+Admin endpoints are protected by JWT. Log in to get a token, then include it in subsequent requests.
+
+**Login**
+```
+POST /api/v1/auth/login
+Content-Type: application/json
+
+{
+    "username": "admin",
+    "password": "nexttrack_admin_2026"
+}
+```
+
+Response:
+```json
+{
+    "status": "success",
+    "access_token": "<jwt-token>",
+    "username": "admin"
+}
+```
+
+**Verify Token**
+```
+GET /api/v1/auth/verify
+Authorization: Bearer <jwt-token>
+```
+
+Default credentials (override via environment variables):
+```
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=nexttrack_admin_2026
+```
+
+### Admin Endpoints
+
+All admin endpoints require `Authorization: Bearer <jwt-token>`.
+
+**System Stats**
+```
+GET /api/v1/admin/stats
+Authorization: Bearer <jwt-token>
+```
+
+**System Health**
+```
+GET /api/v1/admin/health
+Authorization: Bearer <jwt-token>
+```
+
+**Feedback Log**
+```
+GET /api/v1/admin/feedback
+Authorization: Bearer <jwt-token>
+```
+
+**Experiment Detail**
+```
+GET /api/v1/admin/experiments/<experiment_name>
+Authorization: Bearer <jwt-token>
+```
+
+---
+
 ## Model Evaluation
 
 Run the evaluation framework to compare models against baselines:
@@ -326,7 +405,9 @@ nexttrack/
 │   │   ├── mood.py          # Mood analysis endpoints
 │   │   ├── tracks.py        # Track search/features endpoints (paginated, cached)
 │   │   ├── user.py          # User profile/history endpoints
-│   │   └── experiments.py   # A/B testing endpoints
+│   │   ├── experiments.py   # A/B testing endpoints
+│   │   ├── auth.py          # Admin login + JWT verification
+│   │   └── admin.py         # Admin stats, feedback, health endpoints
 │   ├── models/              # Database models
 │   │   ├── user.py
 │   │   ├── track.py
@@ -349,6 +430,24 @@ nexttrack/
 │       ├── metrics.py           # Evaluation metrics
 │       ├── data_split.py        # Train/test split utilities
 │       └── model_persistence.py # Save/load models
+├── frontend/               # Demo UI (React 18 + Vite + Tailwind)
+│   ├── src/
+│   │   ├── app/
+│   │   │   ├── pages/
+│   │   │   │   └── Demo.tsx         # Main demo page (mood → context → recommendations)
+│   │   │   └── components/
+│   │   │       ├── MoodSelector.tsx      # Mood button grid
+│   │   │       ├── MoodTextInput.tsx     # Free-text mood analysis
+│   │   │       ├── ContextSelector.tsx   # Time / activity / weather pills
+│   │   │       ├── SeedTrackSearch.tsx   # Deezer track search + seed selection
+│   │   │       ├── NowPlaying.tsx        # Player with real audio preview
+│   │   │       ├── PlaylistItem.tsx      # Playlist row with preview indicator
+│   │   │       └── TrackCard.tsx         # Track card with audio features
+│   │   └── services/
+│   │       ├── api.ts     # Fetch-based API client + data mapping
+│   │       └── types.ts   # TypeScript types for API responses
+│   ├── vite.config.ts     # Vite config with /api proxy to backend
+│   └── package.json
 ├── data/
 │   ├── processed/           # Dataset files (tracks.csv, artists.csv)
 │   └── models/              # Trained ML model artifacts
@@ -766,6 +865,39 @@ See `TODO.md` for current progress and upcoming tasks.
   - Feature similarity calculation
   - API endpoint tests for experiments, variants, metrics, feedback
   - Recommendation endpoint with diversity/serendipity/explanation parameters
+
+---
+
+### Frontend Demo UI (Completed)
+
+**React 18 + Vite + Tailwind CSS** (`frontend/`)
+
+A polished interactive demo that exposes the full NextTrack API through a clean UI. All API calls go through a Vite dev-server proxy (`/api` → `http://localhost:5001`).
+
+**Features**
+- **Free-text mood input** (`MoodTextInput.tsx`) — type how you feel; calls `POST /api/v1/mood/analyze`, auto-selects the detected mood button and shows detected emotion + confidence badge
+- **Mood selector** (`MoodSelector.tsx`) — grid of mood buttons (happy, sad, energetic, calm, focused, romantic, neutral)
+- **Context pills** (`ContextSelector.tsx`) — three pill groups (Time of day, Activity, Weather) sent as context to the recommendations endpoint
+- **Seed track search** (`SeedTrackSearch.tsx`) — debounced Deezer search, up to 3 seed tracks selectable; seeds sent to `POST /api/v1/recommend` for personalized results
+- **Real recommendations** (`Demo.tsx`) — calls `POST /api/v1/recommend` (with seeds/context) or `POST /api/v1/mood/recommend` (simple), then enriches results with Deezer cover art and 30-second preview URLs
+- **Audio playback** (`NowPlaying.tsx`) — plays Deezer 30-second previews; real-time progress bar with click-to-seek; auto-advances to next track on end; graceful "No preview available" fallback
+- **Playlist sidebar** (`PlaylistItem.tsx`) — preview indicator icon (music note) for tracks that have a preview URL
+
+**API Service** (`frontend/src/services/api.ts`)
+- `analyzeMood(text)` — maps detected emotion to mood button id via `EMOTION_TO_MOOD`
+- `getMoodRecommendations(mood, limit, context)` — simple mood path
+- `getRecommendations(request)` — full hybrid path (seeds + context)
+- `searchTracksWithPreview(query, limit)` — Deezer track search for seed selection
+- `getTrackPreview(artist, track)` — fetch Deezer preview for a single track
+- `enrichWithPreviews(apiTracks)` — parallel Deezer preview fetch for all recommendations; gracefully degrades if Deezer lookup fails
+- `mapApiTrack(apiTrack, deezer?)` — maps API response fields to the frontend `Track` type (0–1 → 0–100 scaling, `name` → `title`, etc.)
+
+**Running the Frontend**
+```bash
+cd frontend
+npm install
+npm run dev   # http://localhost:5173
+```
 
 ---
 
