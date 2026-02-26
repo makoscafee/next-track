@@ -9,6 +9,7 @@ import { Stepper } from '../components/Stepper';
 import { MoodTextInput } from '../components/MoodTextInput';
 import { ContextSelector } from '../components/ContextSelector';
 import { SeedTrackSearch } from '../components/SeedTrackSearch';
+import { GenreFilter } from '../components/GenreFilter';
 import type { SeedTrack } from '../components/SeedTrackSearch';
 import type { Track } from '../components/TrackCard';
 import type { MoodAnalysis, MoodContext } from '../../services/types';
@@ -47,6 +48,7 @@ export function Demo() {
   const [recommendations, setRecommendations] = useState<Track[]>([]);
   const [context, setContext] = useState<MoodContext>({});
   const [seedTracks, setSeedTracks] = useState<SeedTrack[]>([]);
+  const [preferredGenres, setPreferredGenres] = useState<string[]>([]);
   const [moodAnalysis, setMoodAnalysis] = useState<MoodAnalysis | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [apiLatencyMs, setApiLatencyMs] = useState<number | null>(null);
@@ -85,12 +87,14 @@ export function Demo() {
       let tracks: Track[];
       const hasSeeds = seedTracks.length > 0;
       const hasContext = Object.keys(context).some((k) => context[k as keyof MoodContext]);
+      const hasGenres = preferredGenres.length > 0;
 
-      if (hasSeeds || hasContext) {
+      if (hasSeeds || hasContext || hasGenres) {
         const result = await getRecommendations({
           mood,
           seed_tracks: seedTracks.map((t) => ({ name: t.name, artist: t.artist })),
           context: hasContext ? context : undefined,
+          preferred_genres: hasGenres ? preferredGenres : undefined,
           limit: 12,
           include_explanation: true,
         });
@@ -135,6 +139,7 @@ export function Demo() {
     setRecommendations([]);
     setContext({});
     setSeedTracks([]);
+    setPreferredGenres([]);
     setMoodAnalysis(null);
     setError(null);
     setApiLatencyMs(null);
@@ -205,11 +210,12 @@ export function Demo() {
               onMoodSelect={handleMoodSelect}
             />
 
-            {/* Context + seed tracks (shown once mood selected) */}
+            {/* Context, seed tracks, and genre filter (shown once mood selected) */}
             {selectedMood && !showRecommendations && (
               <div className="mt-6 space-y-4 border-t pt-6">
                 <ContextSelector context={context} onChange={setContext} />
                 <SeedTrackSearch seeds={seedTracks} onSeedsChange={setSeedTracks} />
+                <GenreFilter selected={preferredGenres} onChange={setPreferredGenres} />
               </div>
             )}
 

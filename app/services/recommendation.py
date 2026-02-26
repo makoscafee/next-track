@@ -149,6 +149,13 @@ class RecommendationService:
         if exclude_explicit:
             recommendations = self._filter_explicit(recommendations)
 
+        # Apply genre filter if requested — keep genre-matched tracks,
+        # fall back to unfiltered if fewer than 3 survive
+        if preferred_genres and recommendations:
+            recommendations = self._filter_by_genre(
+                recommendations, preferred_genres, limit, fallback=True
+            )
+
         # Cold start strategy for new/anonymous users
         if not recommendations and self.cold_start.is_initialized:
             is_cold = ColdStartRecommender.is_cold_start(
@@ -439,6 +446,52 @@ class RecommendationService:
             if not is_explicit:
                 filtered.append(rec)
         return filtered
+
+    def _filter_by_genre(
+        self,
+        recommendations: List[Dict],
+        preferred_genres: List[str],
+        limit: int,
+        fallback: bool = True,
+    ) -> List[Dict]:
+        """
+        Filter recommendations to those whose genres overlap with preferred_genres.
+
+        Falls back to the original list if fewer than 3 tracks survive (unless
+        fallback=False), so the user always gets a useful result.
+        """
+        genres_lower = [g.lower().strip() for g in preferred_genres]
+
+        def _matches(rec: Dict) -> bool:
+            # Check genres stored directly on the rec
+            rec_genres = rec.get("genres") or []
+            if isinstance(rec_genres, list):
+                for g in rec_genres:
+                    if any(q in g.lower() for q in genres_lower):
+                        return True
+
+            # Look up track genres from the dataset by track_id
+            track_id = rec.get("track_id")
+            if track_id and self.dataset.tracks_df is not None:
+                row = self.dataset.tracks_df[
+                    self.dataset.tracks_df["id"] == track_id
+                ]
+                if not row.empty:
+                    tg = row.iloc[0].get("genres", [])
+                    if isinstance(tg, list):
+                        for g in tg:
+                            if any(q in g.lower() for q in genres_lower):
+                                return True
+
+            return False
+
+        filtered = [r for r in recommendations if _matches(r)]
+
+        if fallback and len(filtered) < 3:
+            # Not enough genre matches — return original list unchanged
+            return recommendations[:limit]
+
+        return filtered[:limit]
 
     def _enrich_cold_start_recs(
         self, cold_recs: List[Dict], strategy: str
