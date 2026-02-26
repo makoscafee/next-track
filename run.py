@@ -12,7 +12,7 @@ config_name = os.getenv("FLASK_ENV", "development")
 app = create_app(config_name)
 
 if __name__ == "__main__":
-    # Get port from environment or default to 5000
+    # Get port from environment or default to 5001
     port = int(os.getenv("PORT", 5000))
     debug = config_name == "development"
 

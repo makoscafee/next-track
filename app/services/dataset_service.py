@@ -8,7 +8,6 @@ import logging
 import os
 from typing import Dict, List, Optional, Tuple
 
-import numpy as np
 import pandas as pd
 
 from app.ml.data_quality import ALL_AUDIO_FEATURES, DataPreprocessor
@@ -30,7 +29,9 @@ class DatasetService:
 
     AUDIO_FEATURES = ALL_AUDIO_FEATURES
 
-    def __init__(self, dataset_path: Optional[str] = None, artists_path: Optional[str] = None):
+    def __init__(
+        self, dataset_path: Optional[str] = None, artists_path: Optional[str] = None
+    ):
         """
         Initialize dataset service.
 
@@ -125,9 +126,7 @@ class DatasetService:
 
         try:
             logger.info("Enriching tracks with genre data...")
-            artists_df = pd.read_csv(
-                self.artists_path, usecols=["id", "genres"]
-            )
+            artists_df = pd.read_csv(self.artists_path, usecols=["id", "genres"])
 
             # Build artist_id -> genres lookup (only artists with genres)
             artists_with_genres = artists_df[artists_df["genres"] != "[]"]

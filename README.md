@@ -42,13 +42,7 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 2. Start Databases
-
-```bash
-docker-compose up -d
-```
-
-### 3. Configure Environment
+### 2. Configure Environment
 
 Copy `.env.example` to `.env` and fill in your credentials:
 
@@ -63,12 +57,24 @@ LASTFM_API_SECRET=your_api_secret
 DATABASE_URL=postgresql://nexttrack:nexttrack_dev@localhost:5432/nexttrack_dev
 ```
 
-### 4. Download Dataset
+### 3. Download Dataset
 
-Download the Kaggle Spotify dataset:
+Download the Kaggle Spotify dataset and place both CSV files in `data/processed/`:
 - [Spotify Dataset 1921-2020](https://www.kaggle.com/datasets/yamaerenay/spotify-dataset-19212020-600k-tracks)
 
-Place `tracks.csv` in `data/processed/`
+```
+data/processed/
+├── tracks.csv    # 586K+ tracks with audio features
+└── artists.csv   # 1.1M artists with genre data (used for genre recommendations)
+```
+
+### 4. Start Databases
+
+```bash
+docker-compose up -d
+```
+
+This starts PostgreSQL 15 on port 5432 and Redis 7 on port 6379.
 
 ### 5. Initialize Database
 
@@ -82,7 +88,7 @@ python -c "from app import create_app; from app.extensions import db; app = crea
 python run.py
 ```
 
-The API will be available at `http://localhost:3001`
+The API will be available at `http://localhost:5000`
 
 ## API Endpoints
 
@@ -93,9 +99,12 @@ GET /health
 
 ### Track Search
 ```
-GET /api/v1/tracks/search?q=blinding+lights&limit=10&source=both
+GET /api/v1/tracks/search?q=blinding+lights&limit=10&offset=0&source=both&exclude_explicit=false
 ```
 - `source`: `dataset`, `lastfm`, or `both`
+- `offset`: skip N results for pagination (dataset source only)
+- `exclude_explicit`: set `true` to filter out explicit tracks
+- Response `metadata` includes `total`, `offset`, `limit`, `has_more` for pagination
 
 ### Track Info (Last.fm + Audio Features)
 ```
@@ -184,7 +193,9 @@ Content-Type: application/json
     "limit": 10,
     "include_explanation": true,
     "diversity_factor": 0.3,
-    "serendipity_factor": 0.1
+    "serendipity_factor": 0.1,
+    "preferred_genres": ["electronic", "pop"],
+    "exclude_explicit": false
 }
 ```
 
@@ -255,6 +266,21 @@ Content-Type: application/json
 
 Feedback types: `click`, `play`, `skip`, `save`, `listen_time`
 
+### New User Onboarding (Cold Start)
+```
+POST /api/v1/onboard
+Content-Type: application/json
+
+{
+    "user_id": "new_user_42",
+    "preferred_genres": ["rock", "electronic", "jazz"],
+    "energy_preference": "high",
+    "mood_preference": "happy"
+}
+```
+
+Returns initial recommendations using the cold start strategy (genre → preferences → popularity fallback).
+
 ## Model Evaluation
 
 Run the evaluation framework to compare models against baselines:
@@ -296,10 +322,10 @@ nexttrack/
 │   ├── config.py            # Configuration
 │   ├── extensions.py        # Flask extensions
 │   ├── api/v1/              # API endpoints
-│   │   ├── recommend.py     # Recommendation endpoints
+│   │   ├── recommend.py     # Recommendation + onboarding endpoints
 │   │   ├── mood.py          # Mood analysis endpoints
-│   │   ├── tracks.py        # Track endpoints
-│   │   ├── user.py          # User endpoints
+│   │   ├── tracks.py        # Track search/features endpoints (paginated, cached)
+│   │   ├── user.py          # User profile/history endpoints
 │   │   └── experiments.py   # A/B testing endpoints
 │   ├── models/              # Database models
 │   │   ├── user.py
@@ -307,12 +333,14 @@ nexttrack/
 │   │   └── interaction.py
 │   ├── services/            # Business logic
 │   │   ├── lastfm_service.py
-│   │   ├── dataset_service.py
-│   │   ├── recommendation.py
+│   │   ├── dataset_service.py   # Dataset loading, search (paginated), genre enrichment
+│   │   ├── recommendation.py    # Hybrid recommendation orchestration
 │   │   └── mood_analyzer.py
 │   └── ml/                  # ML models & evaluation
 │       ├── content_based.py     # K-NN content filtering
 │       ├── collaborative.py     # Matrix factorization (ALS)
+│       ├── cold_start.py        # Cold start recommender (genre/preferences/popularity)
+│       ├── data_quality.py      # Data validation, outlier detection, preprocessing
 │       ├── sentiment_aware.py   # Valence-Arousal mapping
 │       ├── hybrid.py            # Weighted hybrid combiner
 │       ├── ab_testing.py        # A/B testing framework
@@ -322,16 +350,16 @@ nexttrack/
 │       ├── data_split.py        # Train/test split utilities
 │       └── model_persistence.py # Save/load models
 ├── data/
-│   ├── processed/           # Dataset files (tracks.csv)
+│   ├── processed/           # Dataset files (tracks.csv, artists.csv)
 │   └── models/              # Trained ML model artifacts
-├── tests/                   # Test suite (122 tests)
+├── tests/                   # Test suite (183 tests)
 ├── scripts/
 │   ├── evaluate.py          # Model evaluation script
 │   ├── seed_database.py     # Database seeding
 │   └── download_data.py     # Dataset download helper
 ├── docker-compose.yml       # PostgreSQL + Redis
 ├── requirements.txt
-├── run.py                   # Entry point
+├── run.py                   # Entry point (default port 5000)
 └── TODO.md                  # Project task tracking
 ```
 
@@ -340,13 +368,15 @@ nexttrack/
 ### Running Tests
 
 ```bash
-# Run all tests (122 tests)
+# Run all tests (183 tests)
 pytest tests/ -v
 
 # Run specific test files
 pytest tests/test_phase5.py -v        # Phase 5 tests (52 tests)
 pytest tests/test_recommender.py -v   # Recommender tests
 pytest tests/test_mood_analyzer.py -v # Mood analyzer tests
+pytest tests/test_cold_start.py -v    # Cold start tests (30 tests)
+pytest tests/test_data_quality.py -v  # Data quality tests (23 tests)
 ```
 
 ### Running the Evaluation
