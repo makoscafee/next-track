@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Music2, LayoutDashboard, LogOut, RefreshCw, AlertCircle } from 'lucide-react';
+import { Music2, RefreshCw, AlertCircle } from 'lucide-react';
 import { Card } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 import { Skeleton } from '../components/ui/skeleton';
-import { Separator } from '../components/ui/separator';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import {
@@ -25,7 +24,6 @@ import {
 } from '../components/ui/select';
 import {
   adminLogin,
-  clearToken,
   isLoggedIn,
   getAdminStats,
   getAdminHealth,
@@ -657,42 +655,12 @@ function ExperimentsTab() {
 export function Admin() {
   const [loggedIn, setLoggedIn] = useState(isLoggedIn());
 
-  const handleLogout = () => {
-    clearToken();
-    setLoggedIn(false);
-  };
-
   if (!loggedIn) {
     return <LoginForm onSuccess={() => setLoggedIn(true)} />;
   }
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Admin header */}
-      <div className="bg-gradient-to-r from-slate-800 to-slate-700 text-white">
-        <div className="max-w-7xl mx-auto px-4 py-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <LayoutDashboard className="w-6 h-6" />
-              <div>
-                <h1 className="text-xl font-bold">Admin Dashboard</h1>
-                <p className="text-slate-300 text-sm">NextTrack System Monitor</p>
-              </div>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleLogout}
-              className="bg-white/10 border-white/30 text-white hover:bg-white/20"
-            >
-              <LogOut className="w-4 h-4 mr-1.5" />
-              Sign Out
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      {/* Dashboard content */}
       <div className="max-w-7xl mx-auto px-4 py-8">
         <Tabs defaultValue="overview">
           <TabsList className="mb-6">

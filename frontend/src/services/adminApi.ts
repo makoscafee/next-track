@@ -12,10 +12,12 @@ let _token: string | null = null;
 
 export function setToken(token: string) {
   _token = token;
+  window.dispatchEvent(new Event('admin-auth-change'));
 }
 
 export function clearToken() {
   _token = null;
+  window.dispatchEvent(new Event('admin-auth-change'));
 }
 
 export function isLoggedIn(): boolean {

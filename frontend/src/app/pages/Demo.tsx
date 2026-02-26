@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router';
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
 import { MoodSelector } from '../components/MoodSelector';
@@ -18,7 +17,7 @@ import {
   getRecommendations,
   enrichWithPreviews,
 } from '../../services/api';
-import { ArrowLeft, TrendingUp, Sparkles, Music } from 'lucide-react';
+import { TrendingUp, Sparkles, Music } from 'lucide-react';
 
 const DEMO_STEPS = [
   {
@@ -180,30 +179,6 @@ export function Demo() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-purple-600 to-pink-600 text-white">
-        <div className="max-w-7xl mx-auto px-4 py-12">
-          <Link to="/" className="inline-flex items-center gap-2 text-white/90 hover:text-white mb-6 transition-colors">
-            <ArrowLeft className="w-4 h-4" />
-            <span className="text-sm">Back to Home</span>
-          </Link>
-
-          <div className="text-center">
-            <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm px-4 py-2 rounded-full mb-4">
-              <Sparkles className="w-4 h-4" />
-              <span className="text-sm font-semibold">Interactive Demo</span>
-            </div>
-            <h1 className="text-4xl md:text-5xl font-bold mb-4">
-              Experience NextTrack
-            </h1>
-            <p className="text-lg text-white/90 max-w-2xl mx-auto">
-              Discover how our emotionally-aware AI matches your mood with the perfect soundtrack
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Demo Content */}
       <div className="max-w-7xl mx-auto px-4 py-12">
         {/* Stepper */}
         <div className="max-w-4xl mx-auto mb-12">
