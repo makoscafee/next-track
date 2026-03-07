@@ -6,6 +6,7 @@ import type { DeezerSearchResult } from '../../services/types';
 export interface SeedTrack {
   name: string;
   artist: string;
+  track_id?: string;
   imageUrl?: string;
   previewUrl?: string;
 }
@@ -66,6 +67,7 @@ export function SeedTrackSearch({ seeds, onSeedsChange, maxSeeds = 3 }: SeedTrac
       {
         name,
         artist,
+        track_id: result.track_id,
         imageUrl: result.cover_small ?? result.cover_medium,
         previewUrl: result.preview_url,
       },

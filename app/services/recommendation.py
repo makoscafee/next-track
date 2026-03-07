@@ -1,6 +1,6 @@
 """
 Recommendation service - orchestrates the hybrid recommendation system
-Combines Last.fm similarity data with Kaggle dataset audio features
+Combines Spotify similarity data with Kaggle dataset audio features
 with A/B testing, explanations, and diversity controls.
 """
 
@@ -9,15 +9,15 @@ from typing import Any, Dict, List, Optional
 from app.ml.cold_start import ColdStartRecommender
 from app.ml.hybrid import HybridRecommender
 from app.services.dataset_service import DatasetService
-from app.services.lastfm_service import LastFMService
+from app.services.spotify_service import SpotifyService
 
 
 class RecommendationService:
-    """Service for generating recommendations using Last.fm + dataset."""
+    """Service for generating recommendations using Spotify + dataset."""
 
     def __init__(self):
         """Initialize recommendation service."""
-        self.lastfm = LastFMService()
+        self.spotify = SpotifyService()
         self.dataset = DatasetService()
         self.hybrid_model = HybridRecommender()
         self.cold_start = ColdStartRecommender()
@@ -93,8 +93,8 @@ class RecommendationService:
 
         # Strategy 1: Use Last.fm similar tracks if seed tracks provided
         if seed_tracks:
-            lastfm_recs = self._get_lastfm_recommendations(seed_tracks, candidate_limit)
-            recommendations.extend(lastfm_recs)
+            spotify_recs = self._get_spotify_recommendations(seed_tracks, candidate_limit)
+            recommendations.extend(spotify_recs)
 
         # Strategy 2: Use mood-based recommendations from dataset (context-aware)
         # Pass preferred_genres so the query filters at the dataset level.
@@ -187,11 +187,26 @@ class RecommendationService:
         return recommendations
 
     def _get_seed_features(self, seed_tracks: List[Dict]) -> Optional[Dict[str, float]]:
-        """Extract audio features from seed tracks."""
+        """Extract audio features from seed tracks.
+
+        Priority:
+        1. Direct dataset lookup by Spotify track_id (fast, exact match)
+        2. Name/artist fuzzy matching in dataset
+        3. Live Spotify /audio-features fetch (for post-2021 tracks not in dataset)
+        """
         for seed in seed_tracks[:2]:
-            track_data = self.dataset.get_track_by_name(
-                seed.get("name", ""), seed.get("artist")
-            )
+            track_data = None
+
+            # 1. Direct ID lookup
+            track_id = seed.get("track_id")
+            if track_id:
+                track_data = self.dataset.get_track_by_id(track_id)
+
+            # 2. Name/artist fuzzy match
+            if not track_data:
+                track_data = self.dataset.get_track_by_name(
+                    seed.get("name", ""), seed.get("artist")
+                )
 
             if track_data:
                 return {
@@ -204,12 +219,26 @@ class RecommendationService:
                     "speechiness": track_data.get("speechiness", 0.5),
                 }
 
+            # 3. Track not in dataset — fetch live from Spotify (post-2021 tracks)
+            if track_id:
+                features = self.spotify.get_audio_features(track_id)
+                if features:
+                    return {
+                        "danceability": features.get("danceability", 0.5),
+                        "energy": features.get("energy", 0.5),
+                        "valence": features.get("valence", 0.5),
+                        "tempo": features.get("tempo", 120),
+                        "acousticness": features.get("acousticness", 0.5),
+                        "instrumentalness": features.get("instrumentalness", 0.5),
+                        "speechiness": features.get("speechiness", 0.5),
+                    }
+
         return None
 
-    def _get_lastfm_recommendations(
+    def _get_spotify_recommendations(
         self, seed_tracks: List[Dict], limit: int
     ) -> List[Dict]:
-        """Get recommendations from Last.fm similar tracks."""
+        """Get recommendations from Spotify similar tracks."""
         recommendations = []
 
         for seed in seed_tracks[:3]:  # Limit seed tracks
@@ -217,14 +246,13 @@ class RecommendationService:
             artist = seed.get("artist")
 
             if name and artist:
-                similar = self.lastfm.get_similar_tracks(
+                similar = self.spotify.get_similar_tracks(
                     artist, name, limit=limit // len(seed_tracks)
                 )
 
                 for track in similar:
-                    # Try to enrich with dataset audio features
                     enriched = self._enrich_with_dataset(track)
-                    enriched["source"] = "lastfm_similar"
+                    enriched["source"] = "spotify_similar"
                     enriched["seed_track"] = f"{name} by {artist}"
                     recommendations.append(enriched)
 
@@ -405,13 +433,25 @@ class RecommendationService:
         return recommendations
 
     def _enrich_with_dataset(self, track: Dict) -> Dict:
-        """Enrich Last.fm track with dataset audio features."""
+        """Enrich a Spotify track with dataset audio features.
+
+        Tries a direct Spotify ID lookup first (exact match), then falls back
+        to name/artist string matching for tracks not in the dataset.
+        """
         enriched = track.copy()
 
-        # Try to find in dataset
-        dataset_track = self.dataset.get_track_by_name(
-            track.get("name", ""), track.get("artist")
-        )
+        dataset_track = None
+
+        # 1. Direct ID lookup — works because Spotify IDs match the dataset
+        track_id = track.get("track_id")
+        if track_id:
+            dataset_track = self.dataset.get_track_by_id(track_id)
+
+        # 2. Fall back to name/artist matching
+        if not dataset_track:
+            dataset_track = self.dataset.get_track_by_name(
+                track.get("name", ""), track.get("artist")
+            )
 
         if dataset_track:
             enriched["track_id"] = dataset_track.get("id")
@@ -435,7 +475,7 @@ class RecommendationService:
         Deduplicate by track_id / name+artist, then interleave across sources
         so no single source monopolises the final list.
 
-        Source priority order: hybrid → lastfm_similar → mood_match → others
+        Source priority order: hybrid → spotify_similar → mood_match → others
         Within each source, tracks are sorted by score descending before interleaving.
         """
         seen_ids: set = set()
@@ -459,7 +499,7 @@ class RecommendationService:
             unique.append(rec)
 
         # Group by source, sorted by score within each group
-        source_order = ["hybrid", "lastfm_similar", "mood_match"]
+        source_order = ["hybrid", "spotify_similar", "mood_match"]
         buckets: dict = {s: [] for s in source_order}
         buckets["other"] = []
 
@@ -568,16 +608,17 @@ class RecommendationService:
 
     def _get_fallback_recommendations(self, limit: int) -> List[Dict]:
         """Get fallback recommendations when other methods fail."""
-        # Try Last.fm charts
-        chart_tracks = self.lastfm.get_chart_top_tracks(limit=limit)
+        # Try Spotify global charts
+        chart_tracks = self.spotify.get_chart_top_tracks(limit=limit)
 
         if chart_tracks:
             return [
                 {
                     "name": t.get("name"),
                     "artist": t.get("artist"),
+                    "track_id": t.get("track_id"),
                     "source": "chart",
-                    "playcount": t.get("playcount"),
+                    "popularity": t.get("popularity"),
                     "score": 0.5,
                 }
                 for t in chart_tracks
@@ -609,8 +650,8 @@ class RecommendationService:
         Returns:
             list: Similar tracks with similarity scores
         """
-        # Get Last.fm similar tracks
-        similar = self.lastfm.get_similar_tracks(artist, track, limit=limit)
+        # Get Spotify similar tracks
+        similar = self.spotify.get_similar_tracks(artist, track, limit=limit)
 
         # Enrich with dataset features
         enriched = [self._enrich_with_dataset(t) for t in similar]
@@ -631,7 +672,7 @@ class RecommendationService:
         all_tracks = []
 
         for tag in tags[:3]:  # Limit tags
-            tracks = self.lastfm.get_tag_top_tracks(tag, limit=limit // len(tags))
+            tracks = self.spotify.get_tag_top_tracks(tag, limit=limit // len(tags))
 
             for track in tracks:
                 enriched = self._enrich_with_dataset(track)

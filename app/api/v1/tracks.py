@@ -6,12 +6,12 @@ from flask import request
 from flask_restful import Resource
 
 from app.extensions import cache
-from app.services import DatasetService, LastFMService
+from app.services import DatasetService, SpotifyService
 from app.services.deezer_service import get_deezer_service
 
 # Initialize services
 dataset_service = DatasetService()
-lastfm_service = LastFMService()
+spotify_service = SpotifyService()
 
 
 class TrackFeaturesResource(Resource):
@@ -70,7 +70,7 @@ class TrackSearchResource(Resource):
             q: Search query
             limit: Max results (default 10, max 50)
             offset: Results to skip for pagination (default 0)
-            source: 'dataset', 'lastfm', or 'both' (default 'both')
+            source: 'dataset', 'spotify', or 'both' (default 'both')
             exclude_explicit: Filter explicit tracks (default false)
 
         Returns:
@@ -129,18 +129,20 @@ class TrackSearchResource(Resource):
                     }
                 )
 
-        # Search Last.fm (no offset support — always fetches from start)
-        if source in ("lastfm", "both"):
-            lastfm_results = lastfm_service.search_tracks(query, limit=limit)
-            for track in lastfm_results:
+        # Search Spotify (no offset support — always fetches from start)
+        if source in ("spotify", "both"):
+            spotify_results = spotify_service.search_tracks(query, limit=limit)
+            for track in spotify_results:
                 results.append(
                     {
                         "name": track.get("name"),
                         "artist": track.get("artist"),
-                        "listeners": track.get("listeners"),
+                        "track_id": track.get("track_id"),
+                        "popularity": track.get("popularity"),
+                        "explicit": track.get("explicit"),
                         "url": track.get("url"),
-                        "source": "lastfm",
-                        "has_audio_features": False,
+                        "source": "spotify",
+                        "has_audio_features": True,
                     }
                 )
 
@@ -191,41 +193,45 @@ class TrackInfoResource(Resource):
                 "message": 'Both "artist" and "track" query parameters are required',
             }, 400
 
-        # Get track info from Last.fm
-        track_info = lastfm_service.get_track_info(artist, track)
+        # Get track info from Spotify
+        track_info = spotify_service.get_track_info(artist, track)
 
         if not track_info:
             return {
                 "status": "error",
-                "message": f'Track "{track}" by "{artist}" not found on Last.fm',
+                "message": f'Track "{track}" by "{artist}" not found on Spotify',
             }, 404
 
-        # Get tags
-        tags = lastfm_service.get_track_tags(artist, track)
+        # Get genres (via artist)
+        tags = spotify_service.get_track_tags(artist, track)
 
-        # Try to get audio features from dataset
+        # Try direct dataset lookup by Spotify ID first, then name match
         dataset_service.load_dataset()
-        dataset_track = dataset_service.get_track_by_name(track, artist)
+        track_id = track_info.get("track_id")
+        dataset_track = (
+            dataset_service.get_track_by_id(track_id) if track_id else None
+        ) or dataset_service.get_track_by_name(track, artist)
+
         audio_features = None
         if dataset_track:
             audio_features = dataset_service.get_audio_features(dataset_track.get("id"))
+        elif track_id:
+            # Track not in local dataset — fetch live from Spotify
+            audio_features = spotify_service.get_audio_features(track_id)
 
         return {
             "status": "success",
             "track_info": {
                 "name": track_info.get("name"),
-                "artist": track_info.get("artist", {}).get("name")
-                if isinstance(track_info.get("artist"), dict)
-                else artist,
-                "album": track_info.get("album", {}).get("title")
-                if track_info.get("album")
-                else None,
-                "duration_ms": int(track_info.get("duration", 0)),
-                "listeners": int(track_info.get("listeners", 0)),
-                "playcount": int(track_info.get("playcount", 0)),
+                "artist": track_info.get("artist"),
+                "album": track_info.get("album"),
+                "duration_ms": track_info.get("duration_ms"),
+                "explicit": track_info.get("explicit"),
+                "popularity": track_info.get("popularity"),
                 "url": track_info.get("url"),
+                "track_id": track_id,
             },
-            "tags": tags[:10],  # Top 10 tags
+            "tags": tags[:10],
             "audio_features": audio_features,
             "in_dataset": dataset_track is not None,
         }, 200
@@ -312,6 +318,26 @@ class TrackPreviewSearchResource(Resource):
 
         deezer = get_deezer_service()
         results = deezer.search_track(query, limit=limit)
+
+        # Enrich Deezer results with Spotify IDs so seed tracks can be matched
+        # directly against the dataset (Spotify IDs == dataset IDs).
+        # One Spotify search covers the whole result set efficiently.
+        if results:
+            spotify_results = spotify_service.search_tracks(query, limit=10)
+            # Build normalised (name, artist) → track_id lookup
+            spotify_lookup: dict = {}
+            for s in spotify_results:
+                key = (
+                    (s.get("name") or "").lower(),
+                    (s.get("artist") or "").lower(),
+                )
+                if key not in spotify_lookup:
+                    spotify_lookup[key] = s.get("track_id")
+
+            for result in results:
+                name = (result.get("title") or result.get("name") or "").lower()
+                artist = (result.get("artist") or "").lower()
+                result["track_id"] = spotify_lookup.get((name, artist))
 
         return {
             "status": "success",

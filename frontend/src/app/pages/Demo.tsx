@@ -92,7 +92,7 @@ export function Demo() {
       if (hasSeeds || hasContext || hasGenres) {
         const result = await getRecommendations({
           mood,
-          seed_tracks: seedTracks.map((t) => ({ name: t.name, artist: t.artist })),
+          seed_tracks: seedTracks.map((t) => ({ name: t.name, artist: t.artist, track_id: t.track_id })),
           context: hasContext ? context : undefined,
           preferred_genres: hasGenres ? preferredGenres : undefined,
           limit: 12,

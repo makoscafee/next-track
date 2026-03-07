@@ -9,7 +9,7 @@ class RecommendRequestSchema(Schema):
     """Schema for recommendation requests."""
 
     user_id = fields.String(required=False)
-    seed_tracks = fields.List(fields.String(), required=False)
+    seed_tracks = fields.List(fields.Dict(), required=False)
     mood = fields.String(required=False)
     limit = fields.Integer(
         required=False, load_default=10, validate=validate.Range(min=1, max=50)

@@ -19,9 +19,9 @@ class Config:
     JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "jwt-secret-key")
     JWT_ACCESS_TOKEN_EXPIRES = 3600  # 1 hour
 
-    # Last.fm API
-    LASTFM_API_KEY = os.getenv("LASTFM_API_KEY")
-    LASTFM_API_SECRET = os.getenv("LASTFM_API_SECRET")
+    # Spotify API
+    SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
+    SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
 
     # Dataset paths
     DATASET_PATH = os.getenv("DATASET_PATH", "data/processed/tracks.csv")

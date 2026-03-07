@@ -53,7 +53,7 @@ export interface ApiTrack {
 
 export interface RecommendationRequest {
   mood?: string;
-  seed_tracks?: { name: string; artist: string }[];
+  seed_tracks?: { name: string; artist: string; track_id?: string }[];
   context?: MoodContext;
   limit?: number;
   include_explanation?: boolean;
@@ -88,6 +88,7 @@ export interface DeezerPreview {
 export interface DeezerSearchResult extends DeezerPreview {
   name?: string;
   artists?: string;
+  track_id?: string;
 }
 
 // ── Admin Dashboard Types ────────────────────────────────────────────────────
