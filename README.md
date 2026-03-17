@@ -903,4 +903,4 @@ npm run dev   # http://localhost:5173
 
 ## License
 
-This project is part of CM3070 Final Project at University of London.
+MIT
