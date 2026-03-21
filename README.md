@@ -1,7 +1,5 @@
 # NextTrack: Music Recommendation API
 
-**CM3070 Final Project – University of London**
-
 An emotionally-aware, context-sensitive music recommendation API that combines content-based filtering, collaborative filtering, and sentiment analysis with A/B testing and explainable recommendations.
 
 ## Features
