@@ -7,18 +7,18 @@ import type {
   RecommendationResponse,
   DeezerPreview,
   DeezerSearchResult,
-} from './types';
-import type { Track } from '../app/components/TrackCard';
+} from "./types";
+import type { Track } from "../app/components/TrackCard";
 
-const API_BASE = '/api/v1';
+const API_BASE = "/api/v1";
 
 // Placeholder images per mood/genre for when Deezer has no cover art
 const PLACEHOLDER_IMAGE =
-  'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=400&h=400&fit=crop';
+  "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=400&h=400&fit=crop";
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
+    headers: { "Content-Type": "application/json" },
     ...options,
   });
   if (!res.ok) {
@@ -29,21 +29,21 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
 
 // Map API emotion label → frontend2 mood button id
 export const EMOTION_TO_MOOD: Record<string, string> = {
-  joy: 'happy',
-  happiness: 'happy',
-  happy: 'happy',
-  sadness: 'sad',
-  sad: 'sad',
-  fear: 'sad',
-  anger: 'energetic',
-  disgust: 'neutral',
-  surprise: 'neutral',
-  neutral: 'neutral',
-  energetic: 'energetic',
-  calm: 'calm',
-  relaxed: 'calm',
-  romantic: 'romantic',
-  focused: 'focused',
+  joy: "happy",
+  happiness: "happy",
+  happy: "happy",
+  sadness: "sad",
+  sad: "sad",
+  fear: "sad",
+  anger: "energetic",
+  disgust: "neutral",
+  surprise: "neutral",
+  neutral: "neutral",
+  energetic: "energetic",
+  calm: "calm",
+  relaxed: "calm",
+  romantic: "romantic",
+  focused: "focused",
 };
 
 // Map API track + optional Deezer preview to frontend2 Track type
@@ -54,18 +54,16 @@ export function mapApiTrack(apiTrack: ApiTrack, deezer?: DeezerPreview): Track {
   const reason =
     apiTrack.detailed_explanation?.summary ||
     apiTrack.explanation ||
-    'Recommended based on your mood and preferences';
+    "Recommended based on your mood and preferences";
 
   const imageUrl =
-    deezer?.cover_medium ||
-    deezer?.cover_small ||
-    PLACEHOLDER_IMAGE;
+    deezer?.cover_medium || deezer?.cover_small || PLACEHOLDER_IMAGE;
 
   return {
     id: apiTrack.track_id ?? `${apiTrack.name}-${apiTrack.artist}`,
     title: apiTrack.name,
     artist: apiTrack.artist,
-    album: apiTrack.album ?? '',
+    album: apiTrack.album ?? "",
     imageUrl,
     matchScore: Math.round(score * 100),
     audioFeatures: {
@@ -81,8 +79,8 @@ export function mapApiTrack(apiTrack: ApiTrack, deezer?: DeezerPreview): Track {
 
 // Analyze free-text mood
 export async function analyzeMood(text: string): Promise<MoodAnalysis> {
-  const data = await apiFetch<MoodAnalyzeResponse>('/mood/analyze', {
-    method: 'POST',
+  const data = await apiFetch<MoodAnalyzeResponse>("/mood/analyze", {
+    method: "POST",
     body: JSON.stringify({ text, include_context: true }),
   });
   return data.mood_analysis;
@@ -95,9 +93,9 @@ export async function getMoodRecommendations(
   context?: MoodContext,
 ): Promise<ApiTrack[]> {
   const data = await apiFetch<{ status: string; recommendations: ApiTrack[] }>(
-    '/mood/recommend',
+    "/mood/recommend",
     {
-      method: 'POST',
+      method: "POST",
       body: JSON.stringify({ mood, limit, context }),
     },
   );
@@ -108,8 +106,8 @@ export async function getMoodRecommendations(
 export async function getRecommendations(
   request: RecommendationRequest,
 ): Promise<RecommendationResponse> {
-  return apiFetch<RecommendationResponse>('/recommend', {
-    method: 'POST',
+  return apiFetch<RecommendationResponse>("/recommend", {
+    method: "POST",
     body: JSON.stringify(request),
   });
 }
@@ -119,10 +117,29 @@ export async function searchTracksWithPreview(
   query: string,
   limit = 6,
 ): Promise<DeezerSearchResult[]> {
-  const data = await apiFetch<{ status: string; results: DeezerSearchResult[] }>(
-    `/tracks/preview/search?q=${encodeURIComponent(query)}&limit=${limit}`,
-  );
+  const data = await apiFetch<{
+    status: string;
+    results: DeezerSearchResult[];
+  }>(`/tracks/preview/search?q=${encodeURIComponent(query)}&limit=${limit}`);
   return data.results ?? [];
+}
+
+// Resolve a Spotify track_id from name + artist via /tracks/info
+export async function getTrackSpotifyId(
+  artist: string,
+  track: string,
+): Promise<string | null> {
+  try {
+    const data = await apiFetch<{
+      status: string;
+      track_info: { track_id?: string };
+    }>(
+      `/tracks/info?artist=${encodeURIComponent(artist)}&track=${encodeURIComponent(track)}`,
+    );
+    return data.track_info?.track_id ?? null;
+  } catch {
+    return null;
+  }
 }
 
 // Fetch Deezer preview for a single track
@@ -141,7 +158,9 @@ export async function getTrackPreview(
 }
 
 // Enrich a list of API tracks with Deezer previews (best-effort, parallel)
-export async function enrichWithPreviews(apiTracks: ApiTrack[]): Promise<Track[]> {
+export async function enrichWithPreviews(
+  apiTracks: ApiTrack[],
+): Promise<Track[]> {
   const previews = await Promise.all(
     apiTracks.map((t) => getTrackPreview(t.artist, t.name)),
   );

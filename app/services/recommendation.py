@@ -91,12 +91,7 @@ class RecommendationService:
         # so the genre filter has a large enough pool to draw from.
         candidate_limit = limit * 4 if preferred_genres else limit * 2
 
-        # Strategy 1: Use Last.fm similar tracks if seed tracks provided
-        if seed_tracks:
-            spotify_recs = self._get_spotify_recommendations(seed_tracks, candidate_limit)
-            recommendations.extend(spotify_recs)
-
-        # Strategy 2: Use mood-based recommendations from dataset (context-aware)
+        # Strategy 1: Use mood-based recommendations from dataset (context-aware)
         # Pass preferred_genres so the query filters at the dataset level.
         if mood:
             mood_recs = self._get_mood_recommendations(
@@ -192,7 +187,6 @@ class RecommendationService:
         Priority:
         1. Direct dataset lookup by Spotify track_id (fast, exact match)
         2. Name/artist fuzzy matching in dataset
-        3. Live Spotify /audio-features fetch (for post-2021 tracks not in dataset)
         """
         for seed in seed_tracks[:2]:
             track_data = None
@@ -219,44 +213,7 @@ class RecommendationService:
                     "speechiness": track_data.get("speechiness", 0.5),
                 }
 
-            # 3. Track not in dataset — fetch live from Spotify (post-2021 tracks)
-            if track_id:
-                features = self.spotify.get_audio_features(track_id)
-                if features:
-                    return {
-                        "danceability": features.get("danceability", 0.5),
-                        "energy": features.get("energy", 0.5),
-                        "valence": features.get("valence", 0.5),
-                        "tempo": features.get("tempo", 120),
-                        "acousticness": features.get("acousticness", 0.5),
-                        "instrumentalness": features.get("instrumentalness", 0.5),
-                        "speechiness": features.get("speechiness", 0.5),
-                    }
-
         return None
-
-    def _get_spotify_recommendations(
-        self, seed_tracks: List[Dict], limit: int
-    ) -> List[Dict]:
-        """Get recommendations from Spotify similar tracks."""
-        recommendations = []
-
-        for seed in seed_tracks[:3]:  # Limit seed tracks
-            name = seed.get("name")
-            artist = seed.get("artist")
-
-            if name and artist:
-                similar = self.spotify.get_similar_tracks(
-                    artist, name, limit=limit // len(seed_tracks)
-                )
-
-                for track in similar:
-                    enriched = self._enrich_with_dataset(track)
-                    enriched["source"] = "spotify_similar"
-                    enriched["seed_track"] = f"{name} by {artist}"
-                    recommendations.append(enriched)
-
-        return recommendations
 
     def _get_mood_recommendations(
         self,
@@ -635,28 +592,6 @@ class RecommendationService:
             }
             for t in self.dataset.get_random_tracks(limit)
         ]
-
-    def get_similar_tracks(
-        self, artist: str, track: str, limit: int = 10
-    ) -> List[Dict]:
-        """
-        Find tracks similar to a given track.
-
-        Args:
-            artist: Artist name
-            track: Track name
-            limit: Number of similar tracks
-
-        Returns:
-            list: Similar tracks with similarity scores
-        """
-        # Get Spotify similar tracks
-        similar = self.spotify.get_similar_tracks(artist, track, limit=limit)
-
-        # Enrich with dataset features
-        enriched = [self._enrich_with_dataset(t) for t in similar]
-
-        return enriched
 
     def get_tracks_for_tags(self, tags: List[str], limit: int = 10) -> List[Dict]:
         """

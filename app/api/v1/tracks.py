@@ -215,9 +215,6 @@ class TrackInfoResource(Resource):
         audio_features = None
         if dataset_track:
             audio_features = dataset_service.get_audio_features(dataset_track.get("id"))
-        elif track_id:
-            # Track not in local dataset — fetch live from Spotify
-            audio_features = spotify_service.get_audio_features(track_id)
 
         return {
             "status": "success",
@@ -318,26 +315,6 @@ class TrackPreviewSearchResource(Resource):
 
         deezer = get_deezer_service()
         results = deezer.search_track(query, limit=limit)
-
-        # Enrich Deezer results with Spotify IDs so seed tracks can be matched
-        # directly against the dataset (Spotify IDs == dataset IDs).
-        # One Spotify search covers the whole result set efficiently.
-        if results:
-            spotify_results = spotify_service.search_tracks(query, limit=10)
-            # Build normalised (name, artist) → track_id lookup
-            spotify_lookup: dict = {}
-            for s in spotify_results:
-                key = (
-                    (s.get("name") or "").lower(),
-                    (s.get("artist") or "").lower(),
-                )
-                if key not in spotify_lookup:
-                    spotify_lookup[key] = s.get("track_id")
-
-            for result in results:
-                name = (result.get("title") or result.get("name") or "").lower()
-                artist = (result.get("artist") or "").lower()
-                result["track_id"] = spotify_lookup.get((name, artist))
 
         return {
             "status": "success",

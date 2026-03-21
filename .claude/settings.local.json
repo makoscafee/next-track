@@ -20,7 +20,9 @@
       "Bash(venv/bin/python -c \":*)",
       "Bash(venv/bin/pip install spotipy --quiet)",
       "Bash(venv/bin/python -m pytest tests/ -v)",
-      "Bash(venv/bin/python -m pytest tests/ -q --tb=short)"
+      "Bash(venv/bin/python -m pytest tests/ -q --tb=short)",
+      "Bash(grep -r \"test_\\\\|def test\" /Users/barnie/Software/school/CM3070/nexttrack/tests/*.py)",
+      "Bash(find /Users/barnie/Software/school/CM3070/nexttrack/tests -name \"test_*.py\" -exec wc -l {} +)"
     ]
   }
 }

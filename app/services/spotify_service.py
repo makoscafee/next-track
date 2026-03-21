@@ -106,41 +106,6 @@ class SpotifyService:
             logger.error(f"Error fetching track info: {e}")
             return None
 
-    def get_similar_tracks(self, artist: str, track: str, limit: int = 10) -> List[Dict]:
-        """
-        Get tracks similar to a given track via Spotify recommendations.
-
-        Falls back to artist top tracks if the recommendations endpoint is
-        unavailable (restricted for some developer accounts).
-
-        Args:
-            artist: Artist name
-            track: Track name
-            limit: Number of similar tracks
-
-        Returns:
-            list: Similar tracks
-        """
-        if not self.client:
-            return []
-
-        track_id = self._find_track_id(track, artist)
-        if not track_id:
-            return []
-
-        try:
-            results = self.client.recommendations(seed_tracks=[track_id], limit=limit)
-            tracks = results.get("tracks", [])
-            if tracks:
-                return [self._format_track(t) for t in tracks]
-        except Exception as e:
-            logger.warning(f"Spotify recommendations unavailable: {e}")
-
-        # Fallback: artist top tracks (excluding the seed track itself)
-        logger.info("Falling back to artist top tracks for similarity")
-        top = self.get_artist_top_tracks(artist, limit=limit + 1)
-        return [t for t in top if t.get("track_id") != track_id][:limit]
-
     def get_track_tags(self, artist: str, track: str) -> List[Dict]:
         """
         Get genres for a track (via its primary artist).
@@ -301,39 +266,13 @@ class SpotifyService:
             logger.error(f"Error fetching similar artists: {e}")
             return []
 
-    def get_artist_top_tracks(self, artist: str, limit: int = 10) -> List[Dict]:
-        """
-        Get top tracks for an artist.
-
-        Args:
-            artist: Artist name
-            limit: Number of tracks
-
-        Returns:
-            list: Top tracks
-        """
-        if not self.client:
-            return []
-        artist_id = self._find_artist_id(artist)
-        if not artist_id:
-            return []
-        try:
-            data = self.client.artist_top_tracks(artist_id)
-            return [self._format_track(t) for t in data.get("tracks", [])[:limit]]
-        except Exception as e:
-            logger.error(f"Error fetching artist top tracks: {e}")
-            return []
-
     # ------------------------------------------------------------------
     # Genre/tag methods
     # ------------------------------------------------------------------
 
     def get_tag_top_tracks(self, tag: str, limit: int = 10) -> List[Dict]:
         """
-        Get top tracks for a genre/tag via Spotify recommendations.
-
-        Falls back to a genre keyword search if the recommendations
-        endpoint is unavailable.
+        Get top tracks for a genre/tag via keyword search.
 
         Args:
             tag: Genre name (e.g. 'rock', 'chill', 'jazz')
@@ -342,23 +281,7 @@ class SpotifyService:
         Returns:
             list: Top tracks for the genre
         """
-        if not self.client:
-            return []
-
         genre_seed = tag.lower().replace(" ", "-")
-
-        try:
-            results = self.client.recommendations(
-                seed_genres=[genre_seed], limit=min(limit, 100)
-            )
-            tracks = results.get("tracks", [])
-            if tracks:
-                return [self._format_track(t) for t in tracks]
-        except Exception as e:
-            logger.warning(f"Spotify recommendations unavailable for genre '{tag}': {e}")
-
-        # Fallback: search by genre keyword
-        logger.info(f"Falling back to search for genre '{tag}'")
         return self.search_tracks(f"genre:{genre_seed}", limit=limit)
 
     # ------------------------------------------------------------------
@@ -391,46 +314,6 @@ class SpotifyService:
             return tracks
         except Exception as e:
             logger.error(f"Error fetching chart top tracks: {e}")
-            return []
-
-    # ------------------------------------------------------------------
-    # Recommendations (raw Spotify endpoint — used by recommendation.py)
-    # ------------------------------------------------------------------
-
-    def get_recommendations(
-        self,
-        seed_tracks: Optional[List[str]] = None,
-        seed_artists: Optional[List[str]] = None,
-        seed_genres: Optional[List[str]] = None,
-        limit: int = 10,
-        **kwargs,
-    ) -> List[Dict]:
-        """
-        Get Spotify recommendations with optional audio feature targets.
-
-        Args:
-            seed_tracks: List of Spotify track IDs (up to 5 total seeds)
-            seed_artists: List of Spotify artist IDs
-            seed_genres: List of genre seeds
-            limit: Number of recommendations
-            **kwargs: Audio feature targets (target_valence, target_energy, etc.)
-
-        Returns:
-            list: Recommended tracks
-        """
-        if not self.client:
-            return []
-        try:
-            results = self.client.recommendations(
-                seed_tracks=seed_tracks,
-                seed_artists=seed_artists,
-                seed_genres=seed_genres,
-                limit=limit,
-                **kwargs,
-            )
-            return [self._format_track(t) for t in results.get("tracks", [])]
-        except Exception as e:
-            logger.error(f"Error getting recommendations: {e}")
             return []
 
     # ------------------------------------------------------------------

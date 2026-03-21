@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, X, Music } from 'lucide-react';
-import { searchTracksWithPreview } from '../../services/api';
+import { searchTracksWithPreview, getTrackSpotifyId } from '../../services/api';
 import type { DeezerSearchResult } from '../../services/types';
 
 export interface SeedTrack {
@@ -21,6 +21,7 @@ export function SeedTrackSearch({ seeds, onSeedsChange, maxSeeds = 3 }: SeedTrac
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<DeezerSearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [addingIndex, setAddingIndex] = useState<number | null>(null);
   const [showDropdown, setShowDropdown] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -57,23 +58,29 @@ export function SeedTrackSearch({ seeds, onSeedsChange, maxSeeds = 3 }: SeedTrac
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const addSeed = (result: DeezerSearchResult) => {
-    if (seeds.length >= maxSeeds) return;
+  const addSeed = async (result: DeezerSearchResult, index: number) => {
+    if (seeds.length >= maxSeeds || addingIndex !== null) return;
     const name = result.title ?? result.name ?? '';
     const artist = result.artist ?? '';
     if (seeds.some((s) => s.name === name && s.artist === artist)) return;
+
+    setAddingIndex(index);
+    setShowDropdown(false);
+    setQuery('');
+
+    const track_id = await getTrackSpotifyId(artist, name);
+
     onSeedsChange([
       ...seeds,
       {
         name,
         artist,
-        track_id: result.track_id,
+        track_id: track_id ?? undefined,
         imageUrl: result.cover_small ?? result.cover_medium,
         previewUrl: result.preview_url,
       },
     ]);
-    setQuery('');
-    setShowDropdown(false);
+    setAddingIndex(null);
   };
 
   const removeSeed = (index: number) => {
@@ -138,8 +145,9 @@ export function SeedTrackSearch({ seeds, onSeedsChange, maxSeeds = 3 }: SeedTrac
               {results.map((result, i) => (
                 <button
                   key={i}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-muted transition-colors text-left"
-                  onClick={() => addSeed(result)}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-muted transition-colors text-left disabled:opacity-50"
+                  onClick={() => addSeed(result, i)}
+                  disabled={addingIndex !== null}
                 >
                   {result.cover_small ? (
                     <img
@@ -152,7 +160,7 @@ export function SeedTrackSearch({ seeds, onSeedsChange, maxSeeds = 3 }: SeedTrac
                       <Music className="w-4 h-4 text-muted-foreground" />
                     </div>
                   )}
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <div className="text-sm font-medium truncate">
                       {result.title ?? result.name}
                     </div>
@@ -160,6 +168,9 @@ export function SeedTrackSearch({ seeds, onSeedsChange, maxSeeds = 3 }: SeedTrac
                       {result.artist} {result.album ? `· ${result.album}` : ''}
                     </div>
                   </div>
+                  {addingIndex === i && (
+                    <div className="w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                  )}
                 </button>
               ))}
             </div>
