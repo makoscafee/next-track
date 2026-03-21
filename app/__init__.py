@@ -5,11 +5,62 @@ Flask application factory
 
 import os
 
+from flasgger import Swagger
 from flask import Flask
 from flask_cors import CORS
 
 from app.config import config
 from app.extensions import cache, db, jwt, migrate
+
+SWAGGER_CONFIG = {
+    "headers": [],
+    "specs": [
+        {
+            "endpoint": "apispec",
+            "route": "/api/v1/apispec.json",
+            "rule_filter": lambda rule: True,
+            "model_filter": lambda tag: True,
+        }
+    ],
+    "static_url_path": "/flasgger_static",
+    "swagger_ui": True,
+    "specs_route": "/api/docs/",
+}
+
+SWAGGER_TEMPLATE = {
+    "swagger": "2.0",
+    "info": {
+        "title": "NextTrack API",
+        "description": (
+            "Emotionally-aware hybrid music recommendation API. "
+            "Combines content-based K-NN filtering, ALS collaborative filtering, "
+            "and sentiment-aware mood analysis into a single configurable pipeline."
+        ),
+        "version": "1.0.0",
+        "contact": {"email": "admin@nexttrack.example.com"},
+    },
+    "basePath": "/api/v1",
+    "schemes": ["http", "https"],
+    "consumes": ["application/json"],
+    "produces": ["application/json"],
+    "securityDefinitions": {
+        "Bearer": {
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header",
+            "description": "JWT token. Format: **Bearer &lt;token&gt;**",
+        }
+    },
+    "tags": [
+        {"name": "Recommendations", "description": "Hybrid recommendation endpoints"},
+        {"name": "Mood", "description": "Mood analysis and mood-driven recommendations"},
+        {"name": "Tracks", "description": "Track search, info, and audio features"},
+        {"name": "User", "description": "User profiles and listening history"},
+        {"name": "Experiments", "description": "A/B testing and feedback"},
+        {"name": "Auth", "description": "Admin authentication"},
+        {"name": "Admin", "description": "Protected admin dashboard endpoints"},
+    ],
+}
 
 
 def create_app(config_name="development"):
@@ -22,6 +73,7 @@ def create_app(config_name="development"):
     migrate.init_app(app, db)
     jwt.init_app(app)
     cache.init_app(app)
+    Swagger(app, config=SWAGGER_CONFIG, template=SWAGGER_TEMPLATE)
 
     # Configure CORS
     frontend_origins = os.getenv(

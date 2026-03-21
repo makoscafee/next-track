@@ -19,17 +19,56 @@ class TrackFeaturesResource(Resource):
 
     def get(self, track_id):
         """
-        Get audio features for a specific track by ID.
-
-        Args:
-            track_id: Track ID from dataset
-
-        Returns:
-        {
-            "status": "success",
-            "track": {...},
-            "audio_features": {...}
-        }
+        Get audio features for a track by its Spotify/dataset ID.
+        ---
+        tags:
+          - Tracks
+        parameters:
+          - in: path
+            name: track_id
+            type: string
+            required: true
+            description: Spotify track ID
+            example: 4u7EnebtmKWzUH433cf5Qv
+        responses:
+          200:
+            description: Track info and audio features
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  example: success
+                track:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                    name:
+                      type: string
+                    artist:
+                      type: string
+                    album:
+                      type: string
+                audio_features:
+                  type: object
+                  properties:
+                    danceability:
+                      type: number
+                    energy:
+                      type: number
+                    valence:
+                      type: number
+                    tempo:
+                      type: number
+                    acousticness:
+                      type: number
+                    instrumentalness:
+                      type: number
+                    speechiness:
+                      type: number
+          404:
+            description: Track not found
         """
         # Load dataset if needed
         dataset_service.load_dataset()
@@ -65,28 +104,78 @@ class TrackSearchResource(Resource):
     def get(self):
         """
         Search for tracks by name or artist.
-
-        Query params:
-            q: Search query
-            limit: Max results (default 10, max 50)
-            offset: Results to skip for pagination (default 0)
-            source: 'dataset', 'lastfm', or 'both' (default 'both')
-            exclude_explicit: Filter explicit tracks (default false)
-
-        Returns:
-        {
-            "status": "success",
-            "results": [...],
-            "metadata": {
-                "query": str,
-                "count": int,
-                "total": int,
-                "offset": int,
-                "limit": int,
-                "has_more": bool,
-                "source": str
-            }
-        }
+        ---
+        tags:
+          - Tracks
+        parameters:
+          - in: query
+            name: q
+            type: string
+            required: true
+            description: Search query (track name or artist)
+            example: Bohemian Rhapsody
+          - in: query
+            name: limit
+            type: integer
+            default: 10
+            maximum: 50
+          - in: query
+            name: offset
+            type: integer
+            default: 0
+            description: Pagination offset
+          - in: query
+            name: source
+            type: string
+            enum: [dataset, lastfm, both]
+            default: both
+          - in: query
+            name: exclude_explicit
+            type: boolean
+            default: false
+        responses:
+          200:
+            description: Search results
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  example: success
+                results:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      artist:
+                        type: string
+                      track_id:
+                        type: string
+                      explicit:
+                        type: boolean
+                      source:
+                        type: string
+                      has_audio_features:
+                        type: boolean
+                metadata:
+                  type: object
+                  properties:
+                    query:
+                      type: string
+                    count:
+                      type: integer
+                    total:
+                      type: integer
+                    offset:
+                      type: integer
+                    limit:
+                      type: integer
+                    has_more:
+                      type: boolean
+          400:
+            description: Missing query parameter q
         """
         query = request.args.get("q", "")
         limit = min(int(request.args.get("limit", 10)), 50)
@@ -168,19 +257,59 @@ class TrackInfoResource(Resource):
     @cache.cached(timeout=300, query_string=True)
     def get(self):
         """
-        Get detailed track information from Last.fm.
-
-        Query params:
-            artist: Artist name
-            track: Track name
-
-        Returns:
-        {
-            "status": "success",
-            "track_info": {...},
-            "tags": [...],
-            "similar_tracks": [...]
-        }
+        Get detailed track info including tags and dataset audio features.
+        ---
+        tags:
+          - Tracks
+        parameters:
+          - in: query
+            name: artist
+            type: string
+            required: true
+            example: Queen
+          - in: query
+            name: track
+            type: string
+            required: true
+            example: Bohemian Rhapsody
+        responses:
+          200:
+            description: Track detail with optional audio features
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  example: success
+                track_info:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                    artist:
+                      type: string
+                    album:
+                      type: string
+                    duration_ms:
+                      type: integer
+                    listeners:
+                      type: integer
+                    playcount:
+                      type: integer
+                    url:
+                      type: string
+                tags:
+                  type: array
+                  items:
+                    type: string
+                audio_features:
+                  type: object
+                in_dataset:
+                  type: boolean
+          400:
+            description: Missing artist or track parameter
+          404:
+            description: Track not found
         """
         artist = request.args.get("artist")
         track = request.args.get("track")
@@ -236,17 +365,56 @@ class TrackPreviewResource(Resource):
 
     def get(self):
         """
-        Get 30-second preview URL for a track from Deezer.
-
-        Query params:
-            artist: Artist name
-            track: Track name
-
-        Returns:
-        {
-            "status": "success",
-            "preview": {...}
-        }
+        Get 30-second Deezer preview URL for a track.
+        ---
+        tags:
+          - Tracks
+        parameters:
+          - in: query
+            name: artist
+            type: string
+            required: true
+            example: Queen
+          - in: query
+            name: track
+            type: string
+            required: true
+            example: Bohemian Rhapsody
+        responses:
+          200:
+            description: Deezer preview data
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  example: success
+                preview:
+                  type: object
+                  properties:
+                    deezer_id:
+                      type: integer
+                    title:
+                      type: string
+                    artist:
+                      type: string
+                    album:
+                      type: string
+                    preview_url:
+                      type: string
+                      description: 30-second MP3 preview URL
+                    cover_small:
+                      type: string
+                    cover_medium:
+                      type: string
+                    cover_large:
+                      type: string
+                    duration:
+                      type: integer
+          400:
+            description: Missing artist or track parameter
+          404:
+            description: Track not found on Deezer
         """
         artist = request.args.get("artist")
         track = request.args.get("track")
@@ -288,18 +456,50 @@ class TrackPreviewSearchResource(Resource):
     @cache.cached(timeout=300, query_string=True)
     def get(self):
         """
-        Search for tracks on Deezer (includes preview URLs).
-
-        Query params:
-            q: Search query
-            limit: Max results (default 10, max 25)
-
-        Returns:
-        {
-            "status": "success",
-            "results": [...],
-            "count": int
-        }
+        Search Deezer for tracks with 30-second preview URLs.
+        ---
+        tags:
+          - Tracks
+        parameters:
+          - in: query
+            name: q
+            type: string
+            required: true
+            description: Search query
+            example: Bohemian Rhapsody
+          - in: query
+            name: limit
+            type: integer
+            default: 10
+            maximum: 25
+        responses:
+          200:
+            description: Deezer search results with preview URLs
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  example: success
+                results:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      deezer_id:
+                        type: integer
+                      title:
+                        type: string
+                      artist:
+                        type: string
+                      preview_url:
+                        type: string
+                      cover_medium:
+                        type: string
+                count:
+                  type: integer
+          400:
+            description: Missing query parameter q
         """
         query = request.args.get("q", "")
         limit = min(int(request.args.get("limit", 10)), 25)

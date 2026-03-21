@@ -17,33 +17,132 @@ class RecommendResource(Resource):
 
     def post(self):
         """
-        Get hybrid recommendations based on user, seed tracks, and mood.
-
-        Request body:
-        {
-            "user_id": "string" (optional) - For personalization and A/B testing,
-            "seed_tracks": [
-                {"name": "track name", "artist": "artist name"},
-                ...
-            ],
-            "mood": "happy" (optional),
-            "context": {  // optional
-                "time_of_day": "morning|afternoon|evening|night",
-                "activity": "workout|work|relaxation|party|commute|focus|social",
-                "weather": "sunny|rainy|cloudy|cold|hot"
-            },
-            "limit": 10,
-            "include_explanation": false (optional) - Include detailed explanations,
-            "diversity_factor": 0.3 (optional) - Override A/B test (0-1),
-            "serendipity_factor": 0.0 (optional) - Override A/B test (0-1)
-        }
-
-        Returns:
-        {
-            "status": "success",
-            "recommendations": [...],
-            "metadata": {...}
-        }
+        Get hybrid music recommendations.
+        ---
+        tags:
+          - Recommendations
+        parameters:
+          - in: body
+            name: body
+            required: true
+            schema:
+              type: object
+              properties:
+                user_id:
+                  type: string
+                  description: User ID for personalisation and A/B testing
+                  example: user_123
+                seed_tracks:
+                  type: array
+                  description: Seed tracks to base recommendations on
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                        example: Bohemian Rhapsody
+                      artist:
+                        type: string
+                        example: Queen
+                      track_id:
+                        type: string
+                        example: 4u7EnebtmKWzUH433cf5Qv
+                mood:
+                  type: string
+                  description: Target mood
+                  enum: [happy, sad, energetic, calm, melancholic, angry, anxious, neutral, excited, peaceful, relaxed, focused]
+                  example: happy
+                context:
+                  type: object
+                  description: Situational context modifiers
+                  properties:
+                    time_of_day:
+                      type: string
+                      enum: [morning, afternoon, evening, night]
+                    activity:
+                      type: string
+                      enum: [workout, work, relaxation, party, commute, focus, social]
+                    weather:
+                      type: string
+                      enum: [sunny, rainy, cloudy, cold, hot]
+                limit:
+                  type: integer
+                  description: Number of recommendations (max 50)
+                  default: 10
+                  example: 10
+                include_explanation:
+                  type: boolean
+                  description: Include human-readable explanation per track
+                  default: false
+                diversity_factor:
+                  type: number
+                  description: MMR diversity level 0 (relevance-only) to 1 (max diversity)
+                  minimum: 0
+                  maximum: 1
+                  example: 0.5
+                serendipity_factor:
+                  type: number
+                  description: Fraction of results replaced with surprising tracks
+                  minimum: 0
+                  maximum: 1
+                  example: 0.0
+                preferred_genres:
+                  type: array
+                  items:
+                    type: string
+                  description: Filter results to these genres
+                  example: [rock, electronic]
+                exclude_explicit:
+                  type: boolean
+                  description: Remove explicit tracks from results
+                  default: false
+        responses:
+          200:
+            description: Recommendations returned successfully
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  example: success
+                recommendations:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                        example: Bohemian Rhapsody
+                      artist:
+                        type: string
+                        example: Queen
+                      track_id:
+                        type: string
+                        example: 4u7EnebtmKWzUH433cf5Qv
+                      score:
+                        type: number
+                        example: 0.87
+                      source:
+                        type: string
+                        example: hybrid
+                      explanation:
+                        type: string
+                        example: Matches your energetic mood with high danceability
+                      audio_features:
+                        type: object
+                metadata:
+                  type: object
+                  properties:
+                    count:
+                      type: integer
+                    mood:
+                      type: string
+                    sources:
+                      type: array
+                      items:
+                        type: string
+          400:
+            description: Invalid input parameters
         """
         data = request.get_json() or {}
 
@@ -132,20 +231,54 @@ class SimilarTracksResource(Resource):
     def post(self):
         """
         Find tracks similar to a given track.
-
-        Request body:
-        {
-            "artist": "artist name",
-            "track": "track name",
-            "limit": 10
-        }
-
-        Returns:
-        {
-            "status": "success",
-            "similar_tracks": [...],
-            "seed_track": {...}
-        }
+        ---
+        tags:
+          - Recommendations
+        parameters:
+          - in: body
+            name: body
+            required: true
+            schema:
+              type: object
+              required: [artist, track]
+              properties:
+                artist:
+                  type: string
+                  example: Queen
+                track:
+                  type: string
+                  example: Bohemian Rhapsody
+                limit:
+                  type: integer
+                  default: 10
+                  maximum: 50
+        responses:
+          200:
+            description: Similar tracks returned
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  example: success
+                similar_tracks:
+                  type: array
+                  items:
+                    type: object
+                seed_track:
+                  type: object
+                  properties:
+                    artist:
+                      type: string
+                    track:
+                      type: string
+                metadata:
+                  type: object
+                  properties:
+                    count:
+                      type: integer
+          400:
+            description: Missing artist or track field
         """
         data = request.get_json() or {}
 
@@ -177,24 +310,67 @@ class OnboardingResource(Resource):
 
     def post(self):
         """
-        Onboard a new user with genre/mood preferences and return initial recommendations.
-
-        Request body:
-        {
-            "user_id": "string" (required),
-            "preferred_genres": ["rock", "electronic", "jazz"] (optional),
-            "energy_preference": "high" | "medium" | "low" (optional),
-            "mood_preference": "happy" | "calm" | "energetic" | "melancholic" | "focused" (optional),
-            "limit": 10
-        }
-
-        Returns:
-        {
-            "status": "success",
-            "user": {...},
-            "recommendations": [...],
-            "strategy": "genre" | "preferences" | "popular"
-        }
+        Onboard a new user and return cold-start recommendations.
+        ---
+        tags:
+          - Recommendations
+        parameters:
+          - in: body
+            name: body
+            required: true
+            schema:
+              type: object
+              required: [user_id]
+              properties:
+                user_id:
+                  type: string
+                  example: user_123
+                preferred_genres:
+                  type: array
+                  items:
+                    type: string
+                  example: [rock, electronic, jazz]
+                energy_preference:
+                  type: string
+                  enum: [high, medium, low]
+                  example: high
+                mood_preference:
+                  type: string
+                  enum: [happy, calm, energetic, melancholic, focused]
+                  example: energetic
+                limit:
+                  type: integer
+                  default: 10
+                  maximum: 50
+        responses:
+          200:
+            description: User onboarded with initial recommendations
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  example: success
+                user:
+                  type: object
+                recommendations:
+                  type: array
+                  items:
+                    type: object
+                metadata:
+                  type: object
+                  properties:
+                    count:
+                      type: integer
+                    strategy:
+                      type: string
+                      enum: [genre, feature_preference, popularity, fallback]
+                    preferred_genres:
+                      type: array
+                      items:
+                        type: string
+          400:
+            description: Missing user_id
         """
         data = request.get_json() or {}
 

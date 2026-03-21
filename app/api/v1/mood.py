@@ -21,41 +21,86 @@ class MoodAnalyzeResource(Resource):
 
     def post(self):
         """
-        Analyze text input to detect mood with context awareness.
-
-        Request body:
-        {
-            "text": "I'm feeling great today!",
-            "source": "user_input" (optional),
-            "include_context": true (optional, default true),
-            "context": {  // Optional explicit context override
-                "time_of_day": "morning",
-                "activity": "workout",
-                "weather": "sunny"
-            }
-        }
-
-        Returns:
-        {
-            "status": "success",
-            "mood_analysis": {
-                "primary_emotion": "joy",
-                "confidence": 0.92,
-                "valence": 0.85,
-                "arousal": 0.65,
-                "all_emotions": {...},
-                "context": {
-                    "time_of_day": "morning",
-                    "activity": "workout",
-                    "detected_from_text": {...}
-                },
-                "context_adjustment": {
-                    "valence_delta": 0.13,
-                    "arousal_delta": 0.30
-                }
-            },
-            "suggested_music_features": {...}
-        }
+        Analyse free-text input and return emotion + suggested audio features.
+        ---
+        tags:
+          - Mood
+        parameters:
+          - in: body
+            name: body
+            required: true
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text:
+                  type: string
+                  example: I'm feeling anxious but determined before my morning workout
+                include_context:
+                  type: boolean
+                  description: Extract time/activity/weather context from text
+                  default: true
+                context:
+                  type: object
+                  description: Explicit context override
+                  properties:
+                    time_of_day:
+                      type: string
+                      enum: [morning, afternoon, evening, night]
+                    activity:
+                      type: string
+                      enum: [workout, work, relaxation, party, commute, focus, social]
+                    weather:
+                      type: string
+                      enum: [sunny, rainy, cloudy, cold, hot]
+                source:
+                  type: string
+                  description: Caller label for logging
+                  example: user_input
+        responses:
+          200:
+            description: Mood analysis result
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  example: success
+                mood_analysis:
+                  type: object
+                  properties:
+                    primary_emotion:
+                      type: string
+                      example: joy
+                    confidence:
+                      type: number
+                      example: 0.92
+                    valence:
+                      type: number
+                      description: Positivity 0–1
+                      example: 0.85
+                    arousal:
+                      type: number
+                      description: Energy level 0–1
+                      example: 0.65
+                    all_emotions:
+                      type: object
+                    context:
+                      type: object
+                    context_adjustment:
+                      type: object
+                      properties:
+                        valence_delta:
+                          type: number
+                        arousal_delta:
+                          type: number
+                suggested_music_features:
+                  type: object
+                  description: Recommended audio feature target ranges
+                metadata:
+                  type: object
+          400:
+            description: Missing text field
         """
         data = request.get_json() or {}
 
@@ -120,34 +165,79 @@ class MoodRecommendResource(Resource):
 
     def post(self):
         """
-        Get recommendations matching a specific mood with context awareness.
-
-        Request body:
-        {
-            "mood": "happy",
-            "limit": 10,
-            "include_context": true (optional),
-            "context": {  // Optional explicit context
-                "time_of_day": "morning",
-                "activity": "workout",
-                "weather": "sunny"
-            }
-        }
-
-        OR analyze text first:
-        {
-            "text": "I'm feeling great for my morning workout!",
-            "limit": 10
-        }
-
-        Returns:
-        {
-            "status": "success",
-            "mood": "happy",
-            "context": {...},
-            "target_features": {...},
-            "recommendations": [...]
-        }
+        Get recommendations for a mood (or analyse text to detect mood first).
+        ---
+        tags:
+          - Mood
+        parameters:
+          - in: body
+            name: body
+            required: true
+            schema:
+              type: object
+              properties:
+                mood:
+                  type: string
+                  description: Explicit mood (required if text not supplied)
+                  enum: [happy, sad, energetic, calm, melancholic, angry, anxious, neutral, excited, peaceful, relaxed, focused]
+                  example: happy
+                text:
+                  type: string
+                  description: Free text — mood is detected automatically
+                  example: I'm feeling great for my morning workout!
+                limit:
+                  type: integer
+                  default: 10
+                  maximum: 50
+                include_context:
+                  type: boolean
+                  default: true
+                context:
+                  type: object
+                  properties:
+                    time_of_day:
+                      type: string
+                      enum: [morning, afternoon, evening, night]
+                    activity:
+                      type: string
+                      enum: [workout, work, relaxation, party, commute, focus, social]
+                    weather:
+                      type: string
+                      enum: [sunny, rainy, cloudy, cold, hot]
+        responses:
+          200:
+            description: Mood-matched recommendations
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  example: success
+                mood:
+                  type: string
+                  example: happy
+                target_features:
+                  type: object
+                  description: Audio feature ranges used for retrieval
+                context:
+                  type: object
+                context_adjustment:
+                  type: object
+                recommendations:
+                  type: array
+                  items:
+                    type: object
+                metadata:
+                  type: object
+                  properties:
+                    count:
+                      type: integer
+                    text_analyzed:
+                      type: boolean
+                    context_enabled:
+                      type: boolean
+          400:
+            description: Neither mood nor text supplied
         """
         data = request.get_json() or {}
 

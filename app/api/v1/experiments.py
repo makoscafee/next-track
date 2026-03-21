@@ -13,10 +13,22 @@ class ExperimentsListResource(Resource):
 
     def get(self):
         """
-        List all experiments.
-
-        Returns:
-            200: List of experiments with basic info
+        List all A/B test experiments.
+        ---
+        tags:
+          - Experiments
+        responses:
+          200:
+            description: All experiments
+            schema:
+              type: object
+              properties:
+                experiments:
+                  type: array
+                  items:
+                    type: object
+                count:
+                  type: integer
         """
         ab_manager = get_ab_manager()
         experiments = ab_manager.list_experiments()
@@ -32,14 +44,23 @@ class ExperimentResource(Resource):
 
     def get(self, experiment_name):
         """
-        Get experiment details and results.
-
-        Args:
-            experiment_name: Name of the experiment
-
-        Returns:
-            200: Experiment details with variant results
-            404: Experiment not found
+        Get details and current results for an experiment.
+        ---
+        tags:
+          - Experiments
+        parameters:
+          - in: path
+            name: experiment_name
+            type: string
+            required: true
+            example: hybrid_weights
+        responses:
+          200:
+            description: Experiment results by variant
+            schema:
+              type: object
+          404:
+            description: Experiment not found
         """
         ab_manager = get_ab_manager()
         results = ab_manager.get_results(experiment_name)
@@ -55,18 +76,42 @@ class ExperimentVariantResource(Resource):
 
     def get(self, experiment_name):
         """
-        Get the variant assigned to a user for an experiment.
-
-        Args:
-            experiment_name: Name of the experiment
-
-        Query params:
-            user_id (required): User identifier
-
-        Returns:
-            200: Variant assignment details
-            400: Missing user_id
-            404: Experiment not found or not running
+        Get the variant assigned to a specific user.
+        ---
+        tags:
+          - Experiments
+        parameters:
+          - in: path
+            name: experiment_name
+            type: string
+            required: true
+            example: hybrid_weights
+          - in: query
+            name: user_id
+            type: string
+            required: true
+            example: user_123
+        responses:
+          200:
+            description: User's variant assignment
+            schema:
+              type: object
+              properties:
+                experiment:
+                  type: string
+                user_id:
+                  type: string
+                variant:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                    config:
+                      type: object
+          400:
+            description: Missing user_id
+          404:
+            description: Experiment not found or not running
         """
         user_id = request.args.get("user_id")
 
@@ -96,20 +141,51 @@ class ExperimentMetricResource(Resource):
 
     def post(self, experiment_name):
         """
-        Record a metric observation for an experiment.
-
-        Args:
-            experiment_name: Name of the experiment
-
-        Body (JSON):
-            user_id (required): User identifier
-            metric_name (required): Name of the metric
-            value (required): Metric value (number)
-
-        Returns:
-            201: Metric recorded
-            400: Missing required fields
-            404: Experiment not found
+        Record a metric observation for an experiment variant.
+        ---
+        tags:
+          - Experiments
+        parameters:
+          - in: path
+            name: experiment_name
+            type: string
+            required: true
+            example: hybrid_weights
+          - in: body
+            name: body
+            required: true
+            schema:
+              type: object
+              required: [user_id, metric_name, value]
+              properties:
+                user_id:
+                  type: string
+                  example: user_123
+                metric_name:
+                  type: string
+                  example: play_rate
+                value:
+                  type: number
+                  example: 1.0
+        responses:
+          201:
+            description: Metric recorded
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  example: recorded
+                experiment:
+                  type: string
+                metric:
+                  type: string
+                value:
+                  type: number
+          400:
+            description: Missing required fields
+          404:
+            description: Experiment not found
         """
         data = request.get_json() or {}
 
@@ -151,17 +227,47 @@ class FeedbackResource(Resource):
 
     def post(self):
         """
-        Record user feedback for a recommendation.
-
-        Body (JSON):
-            user_id (required): User identifier
-            track_id (required): Track that received feedback
-            feedback_type (required): Type of feedback (click, play, skip, save, listen_time)
-            value (optional): Feedback value (default 1.0)
-
-        Returns:
-            201: Feedback recorded
-            400: Missing required fields
+        Record user feedback for a recommended track.
+        ---
+        tags:
+          - Experiments
+        parameters:
+          - in: body
+            name: body
+            required: true
+            schema:
+              type: object
+              required: [user_id, track_id, feedback_type]
+              properties:
+                user_id:
+                  type: string
+                  example: user_123
+                track_id:
+                  type: string
+                  example: 4u7EnebtmKWzUH433cf5Qv
+                feedback_type:
+                  type: string
+                  enum: [click, play, skip, save, listen_time]
+                  example: play
+                value:
+                  type: number
+                  default: 1.0
+                  example: 1.0
+        responses:
+          201:
+            description: Feedback recorded
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  example: recorded
+                feedback_type:
+                  type: string
+                value:
+                  type: number
+          400:
+            description: Missing required fields or invalid feedback_type
         """
         data = request.get_json() or {}
 

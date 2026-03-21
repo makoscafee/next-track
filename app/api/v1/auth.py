@@ -38,15 +38,42 @@ class AdminLoginResource(Resource):
 
     def post(self):
         """
-        Authenticate admin user and return JWT token.
-
-        Body (JSON):
-            username (required): Admin username
-            password (required): Admin password
-
-        Returns:
-            200: JWT access token
-            401: Invalid credentials
+        Authenticate as admin and receive a JWT bearer token.
+        ---
+        tags:
+          - Auth
+        parameters:
+          - in: body
+            name: body
+            required: true
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username:
+                  type: string
+                  example: admin
+                password:
+                  type: string
+                  example: nexttrack_admin_2026
+        responses:
+          200:
+            description: JWT token issued
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  example: success
+                access_token:
+                  type: string
+                token_type:
+                  type: string
+                  example: Bearer
+          400:
+            description: Missing username or password
+          401:
+            description: Invalid credentials
         """
         data = request.get_json() or {}
 
@@ -74,11 +101,28 @@ class AdminVerifyResource(Resource):
     @admin_required
     def get(self):
         """
-        Verify the current token is valid.
-
-        Returns:
-            200: Token is valid
-            401: Invalid or expired token
+        Verify the current Bearer token is valid.
+        ---
+        tags:
+          - Auth
+        security:
+          - Bearer: []
+        responses:
+          200:
+            description: Token is valid
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  example: valid
+                username:
+                  type: string
+                  example: admin
+          401:
+            description: Invalid or expired token
+          403:
+            description: Not an admin token
         """
         identity = get_jwt_identity()
         return {

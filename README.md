@@ -16,6 +16,7 @@ An emotionally-aware, context-sensitive music recommendation API that combines c
 - **Last.fm Integration**: Real-time similar tracks, artist info, and tags
 - **600K+ Track Dataset**: Pre-loaded Kaggle Spotify dataset with audio features
 - **Evaluation Framework**: Built-in metrics (Precision@K, Recall@K, NDCG@K) with baseline comparisons
+- **Interactive API Docs**: Swagger UI with live request/response testing for all 25 endpoints
 
 ## Tech Stack
 
@@ -25,6 +26,7 @@ An emotionally-aware, context-sensitive music recommendation API that combines c
 - **APIs**: Last.fm API, Deezer API (track previews & cover art)
 - **Data**: Kaggle Spotify Dataset (600K+ tracks)
 - **Frontend**: React 18, Vite, Tailwind CSS, Radix UI (`frontend/`)
+- **API Docs**: Flasgger (Swagger UI 2.0)
 
 ## Quick Start
 
@@ -91,7 +93,13 @@ python run.py
 
 The API will be available at `http://localhost:5000`
 
-> **Note:** On macOS, port 5000 is used by AirPlay. Use `PORT=5001 python run.py` to run on port 5001 instead.
+| URL | Purpose |
+|-----|---------|
+| `http://localhost:5000/health` | Health check |
+| `http://localhost:5000/api/docs/` | Swagger UI (interactive API docs) |
+| `http://localhost:5000/api/v1/apispec.json` | Raw OpenAPI spec |
+
+> **Note:** On macOS, port 5000 is used by AirPlay. Use `PORT=5001 python run.py` to run on port 5001 instead — the Swagger UI will then be at `http://localhost:5001/api/docs/`.
 
 ### 7. Run the Frontend (Optional)
 
@@ -102,6 +110,37 @@ npm run dev
 ```
 
 The demo UI will be available at `http://localhost:5173`. It proxies all `/api` requests to the backend (configured in `frontend/vite.config.ts`). Make sure the backend is running first.
+
+## API Documentation (Swagger UI)
+
+With the backend running, open **[http://localhost:5000/api/docs/](http://localhost:5000/api/docs/)** in your browser to access the interactive Swagger UI.
+
+> On macOS (AirPlay conflict) use port 5001: **http://localhost:5001/api/docs/**
+
+The Swagger UI lets you:
+- Browse all 25 endpoints grouped by tag
+- See full request schemas with field types, enums, and examples
+- Send live requests and inspect responses directly in the browser
+- Authenticate admin endpoints — click **Authorize**, enter `Bearer <token>` (obtain a token via `POST /api/v1/auth/login` first)
+
+The raw OpenAPI 2.0 spec is also available as JSON at:
+```
+GET /api/v1/apispec.json
+```
+
+### Endpoint Groups
+
+| Tag | Endpoints | Description |
+|-----|-----------|-------------|
+| **Recommendations** | `POST /recommend`, `POST /recommend/similar`, `POST /onboard` | Hybrid recommendations, similar tracks, new-user onboarding |
+| **Mood** | `POST /mood/analyze`, `POST /mood/recommend` | Emotion analysis and mood-driven recommendations |
+| **Tracks** | `GET /tracks/search`, `GET /tracks/info`, `GET /tracks/{id}/features`, `GET /tracks/preview`, `GET /tracks/preview/search` | Track search, audio features, Deezer previews |
+| **User** | `GET/POST/PUT /user/profile`, `GET/POST /user/history`, `GET /user/stats`, `GET /user/top-tracks` | User profiles and listening history |
+| **Experiments** | `GET /experiments`, `GET /experiments/{name}`, `GET /experiments/{name}/variant`, `POST /experiments/{name}/metrics`, `POST /feedback` | A/B testing and feedback |
+| **Auth** | `POST /auth/login`, `GET /auth/verify` | Admin JWT authentication |
+| **Admin** | `GET /admin/stats`, `GET /admin/feedback`, `GET /admin/experiments/{name}`, `GET /admin/health` | Protected dashboard endpoints |
+
+---
 
 ## API Endpoints
 

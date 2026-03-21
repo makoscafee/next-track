@@ -47,10 +47,37 @@ class AdminStatsResource(Resource):
     @admin_required
     def get(self):
         """
-        Get system-wide statistics.
-
-        Returns:
-            200: Aggregated stats including models, experiments, feedback
+        Get aggregated system statistics (models, experiments, feedback).
+        ---
+        tags:
+          - Admin
+        security:
+          - Bearer: []
+        responses:
+          200:
+            description: System statistics
+            schema:
+              type: object
+              properties:
+                models:
+                  type: object
+                experiments:
+                  type: array
+                  items:
+                    type: object
+                feedback:
+                  type: object
+                  properties:
+                    total:
+                      type: integer
+                    by_type:
+                      type: object
+                generated_at:
+                  type: string
+          401:
+            description: Unauthorised
+          403:
+            description: Admin access required
         """
         # Get model info
         content_rec = get_cached_recommender()
@@ -109,13 +136,51 @@ class AdminFeedbackLogResource(Resource):
     def get(self):
         """
         Get recent feedback log entries.
-
-        Query params:
-            limit (optional): Number of entries to return (default 50, max 200)
-            feedback_type (optional): Filter by feedback type
-
-        Returns:
-            200: List of recent feedback entries
+        ---
+        tags:
+          - Admin
+        security:
+          - Bearer: []
+        parameters:
+          - in: query
+            name: limit
+            type: integer
+            default: 50
+            maximum: 200
+          - in: query
+            name: feedback_type
+            type: string
+            enum: [click, play, skip, save, listen_time]
+            description: Filter by feedback type
+        responses:
+          200:
+            description: Feedback log entries
+            schema:
+              type: object
+              properties:
+                entries:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      timestamp:
+                        type: string
+                      user_id:
+                        type: string
+                      track_id:
+                        type: string
+                      feedback_type:
+                        type: string
+                      value:
+                        type: number
+                count:
+                  type: integer
+                total_in_log:
+                  type: integer
+          401:
+            description: Unauthorised
+          403:
+            description: Admin access required
         """
         limit = min(int(request.args.get("limit", 50)), 200)
         feedback_type = request.args.get("feedback_type")
@@ -142,14 +207,37 @@ class AdminExperimentDetailResource(Resource):
     @admin_required
     def get(self, experiment_name):
         """
-        Get detailed experiment results with variant comparison.
-
-        Args:
-            experiment_name: Name of the experiment
-
-        Returns:
-            200: Detailed experiment results
-            404: Experiment not found
+        Get detailed experiment results with cross-variant metric comparison.
+        ---
+        tags:
+          - Admin
+        security:
+          - Bearer: []
+        parameters:
+          - in: path
+            name: experiment_name
+            type: string
+            required: true
+            example: hybrid_weights
+        responses:
+          200:
+            description: Detailed experiment results and comparison table
+            schema:
+              type: object
+              properties:
+                experiment:
+                  type: object
+                comparison:
+                  type: object
+                  description: Per-metric, per-variant mean/std/count
+                generated_at:
+                  type: string
+          401:
+            description: Unauthorised
+          403:
+            description: Admin access required
+          404:
+            description: Experiment not found
         """
         ab_manager = get_ab_manager()
         results = ab_manager.get_results(experiment_name)
@@ -190,10 +278,37 @@ class AdminSystemHealthResource(Resource):
     @admin_required
     def get(self):
         """
-        Get detailed system health information.
-
-        Returns:
-            200: System health status
+        Get detailed system health for all components.
+        ---
+        tags:
+          - Admin
+        security:
+          - Bearer: []
+        responses:
+          200:
+            description: Component health status
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [healthy, degraded, unhealthy]
+                  example: healthy
+                components:
+                  type: object
+                  properties:
+                    content_based_model:
+                      type: object
+                    collaborative_model:
+                      type: object
+                    ab_testing:
+                      type: object
+                checked_at:
+                  type: string
+          401:
+            description: Unauthorised
+          403:
+            description: Admin access required
         """
         content_rec = get_cached_recommender()
         cf_rec = get_cached_cf_recommender()

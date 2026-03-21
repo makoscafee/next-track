@@ -13,10 +13,31 @@ class UserProfileResource(Resource):
 
     def get(self):
         """
-        Get user profile.
-
-        Query params:
-            user_id: External user identifier (required)
+        Get a user's profile.
+        ---
+        tags:
+          - User
+        parameters:
+          - in: query
+            name: user_id
+            type: string
+            required: true
+            example: user_123
+        responses:
+          200:
+            description: User profile
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  example: success
+                user:
+                  type: object
+          400:
+            description: Missing user_id
+          404:
+            description: User not found
         """
         user_id = request.args.get("user_id")
         if not user_id:
@@ -35,13 +56,43 @@ class UserProfileResource(Resource):
 
     def post(self):
         """
-        Create or get user profile.
-
-        Body:
-            user_id: External user identifier (required)
-            email: Optional email
-            username: Optional username
-            preferences: Optional preferences dict
+        Create or retrieve a user profile.
+        ---
+        tags:
+          - User
+        parameters:
+          - in: body
+            name: body
+            required: true
+            schema:
+              type: object
+              required: [user_id]
+              properties:
+                user_id:
+                  type: string
+                  example: user_123
+                email:
+                  type: string
+                  example: user@example.com
+                username:
+                  type: string
+                  example: musiclover
+                preferences:
+                  type: object
+                  description: Arbitrary preference key/value pairs
+        responses:
+          201:
+            description: User created or retrieved
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  example: success
+                user:
+                  type: object
+          400:
+            description: Missing user_id
         """
         data = request.get_json() or {}
 
@@ -69,10 +120,38 @@ class UserProfileResource(Resource):
     def put(self):
         """
         Update user preferences.
-
-        Body:
-            user_id: External user identifier (required)
-            preferences: Preferences to update
+        ---
+        tags:
+          - User
+        parameters:
+          - in: body
+            name: body
+            required: true
+            schema:
+              type: object
+              required: [user_id, preferences]
+              properties:
+                user_id:
+                  type: string
+                  example: user_123
+                preferences:
+                  type: object
+                  example: {"preferred_genres": ["rock"], "energy_preference": "high"}
+        responses:
+          200:
+            description: Preferences updated
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  example: success
+                user:
+                  type: object
+          400:
+            description: Missing user_id
+          404:
+            description: User not found
         """
         data = request.get_json() or {}
 
@@ -99,12 +178,44 @@ class UserHistoryResource(Resource):
 
     def get(self):
         """
-        Get user's listening history.
-
-        Query params:
-            user_id: External user identifier (required)
-            limit: Max interactions (default: 50)
-            types: Comma-separated interaction types filter
+        Get a user's listening history.
+        ---
+        tags:
+          - User
+        parameters:
+          - in: query
+            name: user_id
+            type: string
+            required: true
+            example: user_123
+          - in: query
+            name: limit
+            type: integer
+            default: 50
+          - in: query
+            name: types
+            type: string
+            description: Comma-separated interaction type filter
+            example: play,save
+        responses:
+          200:
+            description: Listening history
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  example: success
+                user_id:
+                  type: string
+                count:
+                  type: integer
+                history:
+                  type: array
+                  items:
+                    type: object
+          400:
+            description: Missing user_id
         """
         user_id = request.args.get("user_id")
         if not user_id:
@@ -129,14 +240,50 @@ class UserHistoryResource(Resource):
     def post(self):
         """
         Record a user-track interaction.
-
-        Body:
-            user_id: External user identifier (required)
-            track_id: Track identifier (required)
-            interaction_type: Type (play, like, save, skip) - default: play
-            play_count: Number of plays - default: 1
-            rating: Optional rating (1-5)
-            mood: Optional mood at time of play
+        ---
+        tags:
+          - User
+        parameters:
+          - in: body
+            name: body
+            required: true
+            schema:
+              type: object
+              required: [user_id, track_id]
+              properties:
+                user_id:
+                  type: string
+                  example: user_123
+                track_id:
+                  type: string
+                  example: 4u7EnebtmKWzUH433cf5Qv
+                interaction_type:
+                  type: string
+                  enum: [play, like, save, skip]
+                  default: play
+                play_count:
+                  type: integer
+                  default: 1
+                rating:
+                  type: integer
+                  minimum: 1
+                  maximum: 5
+                mood:
+                  type: string
+                  example: happy
+        responses:
+          201:
+            description: Interaction recorded
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  example: success
+                interaction:
+                  type: object
+          400:
+            description: Missing user_id or track_id
         """
         data = request.get_json() or {}
 
@@ -170,10 +317,31 @@ class UserStatsResource(Resource):
 
     def get(self):
         """
-        Get user listening statistics.
-
-        Query params:
-            user_id: External user identifier (required)
+        Get a user's listening statistics.
+        ---
+        tags:
+          - User
+        parameters:
+          - in: query
+            name: user_id
+            type: string
+            required: true
+            example: user_123
+        responses:
+          200:
+            description: User statistics
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  example: success
+                stats:
+                  type: object
+          400:
+            description: Missing user_id
+          404:
+            description: User not found
         """
         user_id = request.args.get("user_id")
         if not user_id:
@@ -196,11 +364,39 @@ class UserTopTracksResource(Resource):
 
     def get(self):
         """
-        Get user's top/most played tracks.
-
-        Query params:
-            user_id: External user identifier (required)
-            limit: Number of tracks (default: 20)
+        Get a user's most-played tracks.
+        ---
+        tags:
+          - User
+        parameters:
+          - in: query
+            name: user_id
+            type: string
+            required: true
+            example: user_123
+          - in: query
+            name: limit
+            type: integer
+            default: 20
+        responses:
+          200:
+            description: Top tracks
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  example: success
+                user_id:
+                  type: string
+                count:
+                  type: integer
+                top_tracks:
+                  type: array
+                  items:
+                    type: object
+          400:
+            description: Missing user_id
         """
         user_id = request.args.get("user_id")
         if not user_id:
