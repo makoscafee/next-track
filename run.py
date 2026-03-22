@@ -13,7 +13,7 @@ app = create_app(config_name)
 
 if __name__ == "__main__":
     # Get port from environment or default to 5001
-    port = int(os.getenv("PORT", 5000))
+    port = int(os.getenv("PORT", 5001))
     debug = config_name == "development"
 
     print(f"Starting NextTrack API in {config_name} mode")
